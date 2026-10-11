@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Text Editor Foundation - 1024-Char Chunks & Virtual Paging</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: #161e2e;
+      --border: #2e3b52;
+      --text: #f1f5f9;
+      --muted: #8899b0;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --highlight: #f43f5e;
+      --page-marker: #a855f7;
+      --success: #10b981;
+      --font-mono: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 20px;
+      gap: 16px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 19px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent);
+      font-family: var(--font-mono);
+    }
+
+    /* Page Memory & Cache Dashboard */
+    .memory-dashboard {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .memory-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .page-chips-container {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .page-chip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: #0d1424;
+      color: var(--muted);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .page-chip.active {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent);
+      color: #ffffff;
+      font-weight: 700;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+    }
+
+    .page-chip.cached {
+      border-color: #3b82f6;
+      color: #93c5fd;
+    }
+
+    .log-strip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #10b981;
+      background: #070a12;
+      border: 1px solid #1e293b;
+      padding: 6px 10px;
+      border-radius: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Live Inspector Panel */
+    .inspector-panel {
+      background: var(--panel);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .inspector-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    .triplet-container {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .char-card {
+      background: #0d1424;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      text-align: center;
+    }
+
+    .char-card.clicked {
+      background: #1e1b2e;
+      border-color: var(--highlight);
+      box-shadow: 0 0 16px rgba(244, 63, 94, 0.3);
+    }
+
+    .char-card-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .char-card.clicked .char-card-label {
+      color: var(--highlight);
+    }
+
+    .char-card-glyph {
+      font-family: var(--font-mono);
+      font-size: 30px;
+      font-weight: 700;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+    }
+
+    .char-card.clicked .char-card-glyph {
+      color: #fda4af;
+    }
+
+    .char-card-index {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+    }
+
+    .special-glyph {
+      font-size: 12px;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    /* Controls Bar */
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button {
+      background: #243046;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover {
+      background: #334466;
+      border-color: var(--accent);
+    }
+
+    /* Editor Viewport & Frame */
+    .editor-frame {
+      display: flex;
+      flex-direction: column;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .editor-wrapper {
+      position: relative;
+      background: #070a12;
+      border: 2px solid var(--border);
+      border-bottom: 1px solid #1a263c;
+      border-radius: 8px 8px 0 0;
+      overflow: hidden;
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.6);
+      cursor: text;
+      user-select: none;
+    }
+
+    .editor-wrapper:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .editor-wrapper.grabbing {
+      cursor: grabbing !important;
+    }
+
+    .ruler-canvas {
+      display: block;
+      width: 100%;
+      height: 28px;
+      background: #0d1322;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .text-canvas {
+      display: block;
+      width: 100%;
+      height: 80px;
+    }
+
+    /* Scrollbar */
+    .scrollbar-container {
+      width: 100%;
+      height: 20px;
+      background: #090e1a;
+      border: 2px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      position: relative;
+      cursor: pointer;
+      overflow: hidden;
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+
+    .scrollbar-thumb {
+      position: absolute;
+      top: 2px;
+      height: 14px;
+      background: #27354f;
+      border: 1px solid #3b4d6e;
+      border-radius: 7px;
+      cursor: grab;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .scrollbar-thumb:hover {
+      background: #384b6f;
+      border-color: var(--accent);
+    }
+
+    .scrollbar-thumb.dragging {
+      cursor: grabbing !important;
+      background: var(--accent);
+      border-color: #7dd3fc;
+    }
+
+    .thumb-grip {
+      width: 14px;
+      height: 4px;
+      border-top: 1.5px solid rgba(255, 255, 255, 0.5);
+      border-bottom: 1.5px solid rgba(255, 255, 255, 0.5);
+    }
+
+    /* Status Bar */
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      padding: 4px 6px;
+    }
+
+    .shortcut-hint {
+      color: var(--accent);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>
+        Virtual Chunks &amp; Paging Engine
+        <span class="badge">1024 Chars / Page &bull; Max 5 in RAM</span>
+      </h1>
+      <div style="font-size: 12px; color: var(--muted);">
+        Zoom: <span class="shortcut-hint">Ctrl +</span> / <span class="shortcut-hint">Ctrl -</span> &bull; Drag to Scroll
+      </div>
+    </header>
+
+    <!-- PAGE MEMORY & EVICTION MONITOR -->
+    <div class="memory-dashboard">
+      <div class="memory-row">
+        <div style="font-size: 12px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 8px;">
+          <span>PAGES IN FRONTEND RAM (MAX 5):</span>
+          <div class="page-chips-container" id="pageChipsContainer">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        <div style="font-size: 12px; color: var(--accent); font-family: var(--font-mono);">
+          Active: <strong id="lblActivePage">Page #0</strong> | Prefetch: &lt; 200 chars edge
+        </div>
+      </div>
+      <div class="log-strip" id="activityLog">
+        [System Ready]: Page #0 loaded. Scroll right towards 1024 to trigger prefetch.
+      </div>
+    </div>
+
+    <!-- LIVE INSPECTOR: CHAR BEFORE, CLICKED CHAR, CHAR AFTER -->
+    <div class="inspector-panel">
+      <div class="inspector-header">
+        <span>Cursor Inspector</span>
+        <span id="inspectStatus">Click any character below</span>
+      </div>
+
+      <div class="triplet-container">
+        <!-- Character Before -->
+        <div class="char-card" id="cardBefore">
+          <div class="char-card-label">1. Character Before</div>
+          <div class="char-card-glyph" id="glyphBefore">-</div>
+          <div class="char-card-index" id="indexBefore">Index: -</div>
+        </div>
+
+        <!-- Clicked Character -->
+        <div class="char-card clicked" id="cardCurrent">
+          <div class="char-card-label">2. Clicked Character</div>
+          <div class="char-card-glyph" id="glyphCurrent">-</div>
+          <div class="char-card-index" id="indexCurrent">Index: -</div>
+        </div>
+
+        <!-- Character After -->
+        <div class="char-card" id="cardAfter">
+          <div class="char-card-label">3. Character After</div>
+          <div class="char-card-glyph" id="glyphAfter">-</div>
+          <div class="char-card-index" id="indexAfter">Index: -</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTROLS & NAVIGATION -->
+    <div class="controls-bar">
+      <div class="control-group">
+        <button id="btnPrevPage">&larr; Prev Page</button>
+        <button id="btnNextPage">Next Page &rarr;</button>
+        <button id="btnStart">Start (0)</button>
+        <button id="btnEnd">End</button>
+      </div>
+
+      <div class="control-group">
+        <span>Font Size:</span>
+        <button id="btnZoomOut">-</button>
+        <span id="fontSizeDisplay" style="font-family: var(--font-mono); font-weight: 600; color: var(--accent); min-width: 45px; text-align: center;">28px</span>
+        <button id="btnZoomIn">+</button>
+        <button id="btnZoomReset">Reset</button>
+      </div>
+
+      <div class="control-group">
+        <span style="color: var(--muted); font-size: 12px;">Jump to Page:</span>
+        <input type="number" id="jumpPageInput" value="0" min="0" max="49" style="background: #090e1a; border: 1px solid var(--border); color: #fff; padding: 4px 6px; border-radius: 4px; width: 55px; font-family: var(--font-mono);">
+        <button id="btnJumpPage">Go</button>
+      </div>
+    </div>
+
+    <!-- MAIN EDITOR CANVAS VIEWPORT & SCROLLBAR -->
+    <div class="editor-frame">
+      <div class="editor-wrapper" id="editorWrapper" tabindex="0">
+        <canvas class="ruler-canvas" id="rulerCanvas"></canvas>
+        <canvas class="text-canvas" id="textCanvas"></canvas>
+      </div>
+      <div class="scrollbar-container" id="scrollbarTrack">
+        <div class="scrollbar-thumb" id="scrollbarThumb">
+          <span class="thumb-grip"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div class="status-bar">
+      <div>Scroll: <span id="statScroll">0 px</span> / <span id="statMaxScroll">0 px</span></div>
+      <div>Char Width: <span id="statCharWidth">0.0000 px</span> | DPR: <span id="statDpr">1.0</span></div>
+      <div>Total Simulated: 50 Pages (51,200 chars)</div>
+    </div>
+  </div>
+
+  <script>
+    // --- 1. ARCHITECTURE CONSTANTS ---
+    const PAGE_SIZE = 1024;           // Exact chunk size in characters
+    const MAX_PAGES_IN_MEMORY = 5;    // Max pages cached in frontend RAM
+    const PREFETCH_THRESHOLD = 200;   // Trigger prefetch when within 200 chars of page edge
+    const TOTAL_PAGES = 50;           // Simulated document total: 50 * 1024 = 51,200 chars
+    const TOTAL_CHARS = TOTAL_PAGES * PAGE_SIZE;
+
+    const DEFAULT_FONT_SIZE = 28;
+    const MIN_FONT_SIZE = 12;
+    const MAX_FONT_SIZE = 72;
+    const FONT_FAMILY = "'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace";
+
+    // --- 2. FRONTEND STATE & PAGE CACHE ---
+    const state = {
+      fontSize: DEFAULT_FONT_SIZE,
+      charWidth: 0,
+      scrollX: 0,
+      paddingLeft: 40,
+      paddingRight: 40,
+      selectedIndex: 0,
+      isDragging: false,
+      dragStartX: 0,
+      dragStartScrollX: 0,
+      hasDragged: false,
+      dpr: window.devicePixelRatio || 1,
+      lastScrollDirection: 1, // 1 for right, -1 for left
+      lastScrollX: 0
+    };
+
+    // In-memory page cache (Map: pageIndex -> 1024-char string)
+    const pageCache = new Map();
+    const inFlightRequests = new Set();
+
+    // DOM Elements
+    const editorWrapper = document.getElementById('editorWrapper');
+    const rulerCanvas = document.getElementById('rulerCanvas');
+    const textCanvas = document.getElementById('textCanvas');
+    const rulerCtx = rulerCanvas.getContext('2d');
+    const textCtx = textCanvas.getContext('2d');
+
+    const scrollbarTrack = document.getElementById('scrollbarTrack');
+    const scrollbarThumb = document.getElementById('scrollbarThumb');
+
+    // Dashboard & Inspector
+    const pageChipsContainer = document.getElementById('pageChipsContainer');
+    const lblActivePage = document.getElementById('lblActivePage');
+    const activityLog = document.getElementById('activityLog');
+
+    const inspectStatus = document.getElementById('inspectStatus');
+    const glyphBefore = document.getElementById('glyphBefore');
+    const indexBefore = document.getElementById('indexBefore');
+    const glyphCurrent = document.getElementById('glyphCurrent');
+    const indexCurrent = document.getElementById('indexCurrent');
+    const glyphAfter = document.getElementById('glyphAfter');
+    const indexAfter = document.getElementById('indexAfter');
+
+    const fontSizeDisplay = document.getElementById('fontSizeDisplay');
+    const statScroll = document.getElementById('statScroll');
+    const statMaxScroll = document.getElementById('statMaxScroll');
+    const statCharWidth = document.getElementById('statCharWidth');
+    const statDpr = document.getElementById('statDpr');
+
+    // --- 3. DETERMINISTIC BACKEND SIMULATION ---
+    // Generates an exact 1024-character payload for any page requested
+    function generateBackendPage(pageIdx) {
+      const header = `[PAGE #${pageIdx} | ${pageIdx * PAGE_SIZE}..${((pageIdx + 1) * PAGE_SIZE) - 1}] `;
+      const footer = ` [END P#${pageIdx}]`;
+      const fillerSeed = `The quick brown fox jumps over lazy dog ${pageIdx}. Hello world! Sentence ${pageIdx} with numbers 0123456789. Virtual memory buffer stream paging engine. `;
+      
+      let body = header;
+      while (body.length + footer.length < PAGE_SIZE) {
+        body += fillerSeed;
+      }
+      // Exact pad to 1024 chars
+      const paddingNeeded = PAGE_SIZE - (body.length + footer.length);
+      if (paddingNeeded > 0) {
+        body += ".".repeat(paddingNeeded);
+      }
+      return (body + footer).substring(0, PAGE_SIZE);
+    }
+
+    function updateActivityLog(msg) {
+      activityLog.textContent = msg;
+    }
+
+    // --- 4. ASYNCHRONOUS API SIMULATION & EVICTION LOGIC ---
+    async function apiFetchPage(pageIdx) {
+      if (pageIdx < 0 || pageIdx >= TOTAL_PAGES) return null;
+      if (pageCache.has(pageIdx)) return pageCache.get(pageIdx);
+      if (inFlightRequests.has(pageIdx)) return null;
+
+      inFlightRequests.add(pageIdx);
+      updateActivityLog(`⚡ [API] Requesting Page #${pageIdx} from backend...`);
+
+      // Simulate 120ms network latency
+      await new Promise(r => setTimeout(r, 120));
+
+      const pageContent = generateBackendPage(pageIdx);
+      pageCache.set(pageIdx, pageContent);
+      inFlightRequests.delete(pageIdx);
+
+      // EVICTION: Keep at most MAX_PAGES_IN_MEMORY (5 pages)
+      enforceMaxPages(pageIdx);
+
+      updateMemoryDashboard();
+      render();
+      return pageContent;
+    }
+
+    function enforceMaxPages(triggeringPage) {
+      if (pageCache.size <= MAX_PAGES_IN_MEMORY) return;
+
+      // Find current active page in view
+      const activePage = getActivePage();
+
+      // Find page with greatest distance from activePage
+      let farthestPage = null;
+      let maxDistance = -1;
+
+      for (const pageIdx of pageCache.keys()) {
+        const dist = Math.abs(pageIdx - activePage);
+        if (dist > maxDistance) {
+          maxDistance = dist;
+          farthestPage = pageIdx;
+        } else if (dist === maxDistance) {
+          // If equidistant, prefer deleting page opposite to scroll direction
+          if (state.lastScrollDirection > 0 && pageIdx < farthestPage) {
+            farthestPage = pageIdx;
+          } else if (state.lastScrollDirection < 0 && pageIdx > farthestPage) {
+            farthestPage = pageIdx;
+          }
+        }
+      }
+
+      if (farthestPage !== null) {
+        pageCache.delete(farthestPage);
+        const remaining = Array.from(pageCache.keys()).sort((a,b)=>a-b).join(', ');
+        updateActivityLog(`🗑️ [Eviction] Evicted Page #${farthestPage} (farthest from active #${activePage}). In RAM: [${remaining}]`);
+      }
+    }
+
+    function getActivePage() {
+      const viewportCenter = state.scrollX + (editorWrapper.clientWidth / 2) - state.paddingLeft;
+      const centerChar = Math.max(0, Math.floor(viewportCenter / state.charWidth));
+      return Math.min(TOTAL_PAGES - 1, Math.floor(centerChar / PAGE_SIZE));
+    }
+
+    function updateMemoryDashboard() {
+      const activePage = getActivePage();
+      lblActivePage.textContent = `Page #${activePage}`;
+
+      pageChipsContainer.innerHTML = '';
+      const cachedPages = Array.from(pageCache.keys()).sort((a, b) => a - b);
+
+      cachedPages.forEach(p => {
+        const chip = document.createElement('div');
+        chip.className = `page-chip ${p === activePage ? 'active' : 'cached'}`;
+        chip.textContent = `Page ${p}`;
+        pageChipsContainer.appendChild(chip);
+      });
+    }
+
+    // Access character in cache or schedule async fetch
+    function getCharAtGlobalIndex(globalIdx) {
+      if (globalIdx < 0 || globalIdx >= TOTAL_CHARS) return null;
+      const pageIdx = Math.floor(globalIdx / PAGE_SIZE);
+      const offset = globalIdx % PAGE_SIZE;
+
+      if (pageCache.has(pageIdx)) {
+        return pageCache.get(pageIdx)[offset];
+      } else {
+        // Automatically request page if not yet in cache
+        apiFetchPage(pageIdx);
+        return "·"; // Placeholder while fetching
+      }
+    }
+
+    // --- 5. MONOSPACE PROBE & SIZING ---
+    function measureCharWidth() {
+      const probeCanvas = document.createElement('canvas');
+      const ctx = probeCanvas.getContext('2d');
+      ctx.font = `${state.fontSize}px ${FONT_FAMILY}`;
+      const testString = "M".repeat(1000);
+      const measuredTotal = ctx.measureText(testString).width;
+      state.charWidth = measuredTotal / 1000;
+
+      statCharWidth.textContent = `${state.charWidth.toFixed(4)} px`;
+      statDpr.textContent = `${(window.devicePixelRatio || 1).toFixed(2)}x`;
+      fontSizeDisplay.textContent = `${state.fontSize}px`;
+    }
+
+    function getMaxScroll() {
+      const viewportWidth = editorWrapper.clientWidth;
+      const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+      return Math.max(0, totalWidth - viewportWidth);
+    }
+
+    function clampScroll() {
+      const max = getMaxScroll();
+      if (state.scrollX > max) state.scrollX = max;
+      if (state.scrollX < 0) state.scrollX = 0;
+      statScroll.textContent = `${Math.round(state.scrollX)} px`;
+      statMaxScroll.textContent = `${Math.round(max)} px`;
+      updateScrollbar();
+    }
+
+    // --- 6. CANVAS RESIZE & HI-DPI ---
+    function resizeCanvases() {
+      state.dpr = window.devicePixelRatio || 1;
+      const rect = editorWrapper.getBoundingClientRect();
+      const cssWidth = rect.width;
+
+      rulerCanvas.width = cssWidth * state.dpr;
+      rulerCanvas.height = 28 * state.dpr;
+      rulerCanvas.style.width = `${cssWidth}px`;
+      rulerCanvas.style.height = `28px`;
+
+      textCanvas.width = cssWidth * state.dpr;
+      textCanvas.height = 80 * state.dpr;
+      textCanvas.style.width = `${cssWidth}px`;
+      textCanvas.style.height = `80px`;
+
+      rulerCtx.resetTransform();
+      rulerCtx.scale(state.dpr, state.dpr);
+
+      textCtx.resetTransform();
+      textCtx.scale(state.dpr, state.dpr);
+
+      clampScroll();
+      render();
+    }
+
+    // --- 7. PREFETCH THRESHOLD CHECK ---
+    function checkPrefetchTrigger(firstVisible, lastVisible) {
+      const currentActive = getActivePage();
+
+      // Right boundary check
+      const distToNextPage = ((currentActive + 1) * PAGE_SIZE) - lastVisible;
+      if (distToNextPage <= PREFETCH_THRESHOLD && currentActive + 1 < TOTAL_PAGES) {
+        if (!pageCache.has(currentActive + 1) && !inFlightRequests.has(currentActive + 1)) {
+          apiFetchPage(currentActive + 1);
+        }
+      }
+
+      // Left boundary check
+      const distToPrevPage = firstVisible - (currentActive * PAGE_SIZE);
+      if (distToPrevPage <= PREFETCH_THRESHOLD && currentActive - 1 >= 0) {
+        if (!pageCache.has(currentActive - 1) && !inFlightRequests.has(currentActive - 1)) {
+          apiFetchPage(currentActive - 1);
+        }
+      }
+    }
+
+    // --- 8. RENDER LOOP ---
+    function render() {
+      const viewportWidth = editorWrapper.clientWidth;
+      const rulerHeight = 28;
+      const textHeight = 80;
+
+      rulerCtx.clearRect(0, 0, viewportWidth, rulerHeight);
+      textCtx.clearRect(0, 0, viewportWidth, textHeight);
+
+      rulerCtx.fillStyle = "#0d1322";
+      rulerCtx.fillRect(0, 0, viewportWidth, rulerHeight);
+      textCtx.fillStyle = "#070a12";
+      textCtx.fillRect(0, 0, viewportWidth, textHeight);
+
+      const firstVisible = Math.max(0, Math.floor((state.scrollX - state.paddingLeft) / state.charWidth));
+      const lastVisible = Math.min(TOTAL_CHARS, Math.ceil((state.scrollX + viewportWidth - state.paddingLeft) / state.charWidth) + 1);
+
+      // Ensure pages for visible range are requested
+      const startPage = Math.floor(firstVisible / PAGE_SIZE);
+      const endPage = Math.floor(lastVisible / PAGE_SIZE);
+      for (let p = startPage; p <= endPage; p++) {
+        if (!pageCache.has(p) && !inFlightRequests.has(p)) {
+          apiFetchPage(p);
+        }
+      }
+
+      // Prefetch adjacent page if near boundary
+      checkPrefetchTrigger(firstVisible, lastVisible);
+
+      // Update active page chip
+      updateMemoryDashboard();
+
+      // --- DRAW RULER & PAGE DIVIDERS ---
+      rulerCtx.font = `10px ${FONT_FAMILY}`;
+      rulerCtx.textBaseline = "alphabetic";
+
+      // Regular character ticks
+      const step = state.charWidth < 12 ? 20 : 10;
+      const firstTick = Math.floor(firstVisible / step) * step;
+
+      for (let i = firstTick; i <= lastVisible; i += step) {
+        if (i < 0 || i > TOTAL_CHARS) continue;
+        const x = state.paddingLeft + (i * state.charWidth) - state.scrollX;
+        if (x >= -40 && x <= viewportWidth + 40) {
+          const isPageBoundary = (i % PAGE_SIZE === 0);
+          if (isPageBoundary) {
+            // Bright Page Divider
+            const pageNum = i / PAGE_SIZE;
+            rulerCtx.strokeStyle = "#a855f7";
+            rulerCtx.lineWidth = 2;
+            rulerCtx.beginPath();
+            rulerCtx.moveTo(x, 0);
+            rulerCtx.lineTo(x, rulerHeight);
+            rulerCtx.stroke();
+
+            rulerCtx.fillStyle = "#c084fc";
+            rulerCtx.font = `bold 10px ${FONT_FAMILY}`;
+            rulerCtx.fillText(`PAGE #${pageNum} [${i}]`, x + 4, rulerHeight - 6);
+            rulerCtx.font = `10px ${FONT_FAMILY}`;
+          } else {
+            // Standard tick
+            rulerCtx.strokeStyle = "#2e3b52";
+            rulerCtx.lineWidth = 1;
+            rulerCtx.beginPath();
+            rulerCtx.moveTo(x, rulerHeight - 10);
+            rulerCtx.lineTo(x, rulerHeight);
+            rulerCtx.stroke();
+
+            rulerCtx.fillStyle = "#64748b";
+            rulerCtx.fillText(`${i}`, x + 3, rulerHeight - 4);
+          }
+        }
+      }
+
+      // --- DRAW CLICKED CHARACTER HIGHLIGHT ---
+      if (state.selectedIndex !== null && state.selectedIndex >= firstVisible && state.selectedIndex < lastVisible) {
+        const selX = state.paddingLeft + (state.selectedIndex * state.charWidth) - state.scrollX;
+        textCtx.fillStyle = "rgba(244, 63, 94, 0.28)";
+        textCtx.fillRect(selX, 8, state.charWidth, textHeight - 16);
+
+        textCtx.strokeStyle = "#f43f5e";
+        textCtx.lineWidth = 2;
+        textCtx.strokeRect(selX, 8, state.charWidth, textHeight - 16);
+      }
+
+      // --- DRAW TEXT GLYPHS ---
+      textCtx.font = `${state.fontSize}px ${FONT_FAMILY}`;
+      textCtx.textBaseline = "middle";
+      const textY = textHeight / 2;
+
+      for (let i = firstVisible; i < lastVisible; i++) {
+        if (i >= TOTAL_CHARS) break;
+        const x = state.paddingLeft + (i * state.charWidth) - state.scrollX;
+        
+        // Page boundary visual separator on text canvas
+        if (i > 0 && i % PAGE_SIZE === 0) {
+          textCtx.strokeStyle = "rgba(168, 85, 247, 0.4)";
+          textCtx.lineWidth = 1.5;
+          textCtx.beginPath();
+          textCtx.moveTo(x, 4);
+          textCtx.lineTo(x, textHeight - 4);
+          textCtx.stroke();
+        }
+
+        const char = getCharAtGlobalIndex(i);
+
+        if (i === state.selectedIndex) {
+          textCtx.fillStyle = "#ffffff";
+          textCtx.font = `bold ${state.fontSize}px ${FONT_FAMILY}`;
+        } else if (char === "·") {
+          textCtx.fillStyle = "#64748b"; // Loading placeholder
+        } else if (char === "[" || char === "]") {
+          textCtx.fillStyle = "#c084fc"; // Page tag accent
+        } else if (char === " ") {
+          textCtx.fillStyle = "#334155";
+        } else {
+          textCtx.fillStyle = "#cbd5e1";
+          textCtx.font = `${state.fontSize}px ${FONT_FAMILY}`;
+        }
+
+        textCtx.fillText(char || " ", x, textY);
+      }
+
+      // Left/Right Padding Visual indicators
+      if (state.scrollX < state.paddingLeft) {
+        textCtx.fillStyle = "rgba(239, 68, 68, 0.08)";
+        textCtx.fillRect(0, 0, state.paddingLeft - state.scrollX, textHeight);
+      }
+    }
+
+    // --- 9. SCROLLBAR INTERFACE ---
+    function updateScrollbar() {
+      const trackWidth = scrollbarTrack.clientWidth;
+      const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+      const viewportWidth = editorWrapper.clientWidth;
+      const maxScroll = getMaxScroll();
+
+      if (totalWidth <= viewportWidth || maxScroll <= 0) {
+        scrollbarThumb.style.width = `${trackWidth}px`;
+        scrollbarThumb.style.transform = `translateX(0px)`;
+        return;
+      }
+
+      const ratio = viewportWidth / totalWidth;
+      const thumbWidth = Math.max(36, trackWidth * ratio);
+      const usableTrack = trackWidth - thumbWidth;
+      const scrollRatio = state.scrollX / maxScroll;
+      const thumbLeft = Math.max(0, Math.min(usableTrack, scrollRatio * usableTrack));
+
+      scrollbarThumb.style.width = `${thumbWidth}px`;
+      scrollbarThumb.style.transform = `translateX(${thumbLeft}px)`;
+    }
+
+    // --- 10. HIT-TESTING & TRIPLET INSPECTOR ---
+    function getIndexFromClientX(clientX) {
+      const rect = textCanvas.getBoundingClientRect();
+      const clickXInCanvas = clientX - rect.left;
+      const absoluteX = clickXInCanvas + state.scrollX - state.paddingLeft;
+      const rawIndex = Math.floor(absoluteX / state.charWidth);
+      return Math.max(0, Math.min(TOTAL_CHARS - 1, rawIndex));
+    }
+
+    function formatGlyph(char) {
+      if (char === undefined || char === null) return `<span class="special-glyph">None</span>`;
+      if (char === " ") return `<span class="special-glyph">[SPACE]</span>`;
+      if (char === "\t") return `<span class="special-glyph">[TAB]</span>`;
+      if (char === "·") return `<span class="special-glyph">[LOADING...]</span>`;
+      return escapeHtml(char);
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function updateInspector(index) {
+      state.selectedIndex = index;
+      const pageIndex = Math.floor(index / PAGE_SIZE);
+      inspectStatus.textContent = `Character #${index} Selected (Page #${pageIndex})`;
+
+      // 1. Character Before (index - 1)
+      if (index > 0) {
+        const prevChar = getCharAtGlobalIndex(index - 1);
+        glyphBefore.innerHTML = formatGlyph(prevChar);
+        indexBefore.textContent = `Index: #${index - 1} (P#${Math.floor((index - 1) / PAGE_SIZE)})`;
+      } else {
+        glyphBefore.innerHTML = `<span class="special-glyph">[START]</span>`;
+        indexBefore.textContent = `No predecessor`;
+      }
+
+      // 2. Clicked Character (index)
+      const curChar = getCharAtGlobalIndex(index);
+      glyphCurrent.innerHTML = formatGlyph(curChar);
+      indexCurrent.textContent = `Index: #${index} (P#${pageIndex})`;
+
+      // 3. Character After (index + 1)
+      if (index < TOTAL_CHARS - 1) {
+        const nextChar = getCharAtGlobalIndex(index + 1);
+        glyphAfter.innerHTML = formatGlyph(nextChar);
+        indexAfter.textContent = `Index: #${index + 1} (P#${Math.floor((index + 1) / PAGE_SIZE)})`;
+      } else {
+        glyphAfter.innerHTML = `<span class="special-glyph">[END]</span>`;
+        indexAfter.textContent = `No successor`;
+      }
+
+      render();
+    }
+
+    // --- 11. ZOOM SCALING ---
+    function changeFontSize(delta) {
+      const oldFontSize = state.fontSize;
+      const newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, oldFontSize + delta));
+      if (oldFontSize === newFontSize) return;
+
+      const viewportCenter = editorWrapper.clientWidth / 2;
+      const centerIndex = (state.scrollX + viewportCenter - state.paddingLeft) / state.charWidth;
+
+      state.fontSize = newFontSize;
+      measureCharWidth();
+
+      state.scrollX = (centerIndex * state.charWidth) + state.paddingLeft - viewportCenter;
+      clampScroll();
+      render();
+    }
+
+    function resetFontSize() {
+      state.fontSize = DEFAULT_FONT_SIZE;
+      measureCharWidth();
+      clampScroll();
+      render();
+    }
+
+    // --- 12. MOUSE DRAGGING & WHEEL INTERACTION ---
+    textCanvas.addEventListener('mousedown', (e) => {
+      editorWrapper.focus();
+      if (e.button === 0) {
+        state.isDragging = true;
+        state.hasDragged = false;
+        state.dragStartX = e.clientX;
+        state.dragStartScrollX = state.scrollX;
+        editorWrapper.classList.add('grabbing');
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (state.isDragging) {
+        const deltaX = e.clientX - state.dragStartX;
+        if (Math.abs(deltaX) > 3) {
+          state.hasDragged = true;
+        }
+        const newScrollX = state.dragStartScrollX - deltaX;
+        state.lastScrollDirection = newScrollX >= state.scrollX ? 1 : -1;
+        state.scrollX = newScrollX;
+        clampScroll();
+        render();
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (state.isDragging) {
+        state.isDragging = false;
+        editorWrapper.classList.remove('grabbing');
+        if (!state.hasDragged) {
+          const clickedIndex = getIndexFromClientX(e.clientX);
+          updateInspector(clickedIndex);
+        }
+      }
+    });
+
+    // Trackpad / Wheel Scroll
+    editorWrapper.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      state.lastScrollDirection = delta >= 0 ? 1 : -1;
+      state.scrollX += delta * 1.2;
+      clampScroll();
+      render();
+    }, { passive: false });
+
+    // --- 13. KEYBOARD SHORTCUTS ---
+    window.addEventListener('keydown', (e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+      if (isCtrlOrCmd && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        changeFontSize(3);
+        return;
+      }
+      if (isCtrlOrCmd && (e.key === '-' || e.key === '_')) {
+        e.preventDefault();
+        changeFontSize(-3);
+        return;
+      }
+      if (isCtrlOrCmd && e.key === '0') {
+        e.preventDefault();
+        resetFontSize();
+        return;
+      }
+
+      if (document.activeElement === editorWrapper || document.activeElement === document.body) {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          state.lastScrollDirection = -1;
+          state.scrollX -= state.charWidth * 5;
+          clampScroll();
+          render();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          state.lastScrollDirection = 1;
+          state.scrollX += state.charWidth * 5;
+          clampScroll();
+          render();
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          state.lastScrollDirection = -1;
+          state.scrollX = 0;
+          clampScroll();
+          render();
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          state.lastScrollDirection = 1;
+          state.scrollX = getMaxScroll();
+          clampScroll();
+          render();
+        }
+      }
+    });
+
+    // --- 14. SCROLLBAR DRAG & TRACK CLICK ---
+    let isScrollbarDragging = false;
+    let scrollbarDragStartX = 0;
+    let scrollbarDragStartScrollX = 0;
+
+    scrollbarThumb.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      isScrollbarDragging = true;
+      scrollbarDragStartX = e.clientX;
+      scrollbarDragStartScrollX = state.scrollX;
+      scrollbarThumb.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isScrollbarDragging) {
+        const trackWidth = scrollbarTrack.clientWidth;
+        const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+        const viewportWidth = editorWrapper.clientWidth;
+        const ratio = viewportWidth / totalWidth;
+        const thumbWidth = Math.max(36, trackWidth * ratio);
+        const usableTrack = trackWidth - thumbWidth;
+        const maxScroll = getMaxScroll();
+
+        if (usableTrack > 0 && maxScroll > 0) {
+          const deltaX = e.clientX - scrollbarDragStartX;
+          const scrollDelta = (deltaX / usableTrack) * maxScroll;
+          const targetScrollX = scrollbarDragStartScrollX + scrollDelta;
+          state.lastScrollDirection = targetScrollX >= state.scrollX ? 1 : -1;
+          state.scrollX = targetScrollX;
+          clampScroll();
+          render();
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isScrollbarDragging) {
+        isScrollbarDragging = false;
+        scrollbarThumb.classList.remove('dragging');
+        document.body.style.userSelect = '';
+      }
+    });
+
+    scrollbarTrack.addEventListener('click', (e) => {
+      if (e.target === scrollbarThumb || scrollbarThumb.contains(e.target)) return;
+      const rect = scrollbarTrack.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const trackWidth = rect.width;
+      const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+      const viewportWidth = editorWrapper.clientWidth;
+      const ratio = viewportWidth / totalWidth;
+      const thumbWidth = Math.max(36, trackWidth * ratio);
+      const usableTrack = trackWidth - thumbWidth;
+      const maxScroll = getMaxScroll();
+
+      if (usableTrack > 0 && maxScroll > 0) {
+        const targetLeft = clickX - (thumbWidth / 2);
+        const targetRatio = Math.max(0, Math.min(1, targetLeft / usableTrack));
+        const newScrollX = targetRatio * maxScroll;
+        state.lastScrollDirection = newScrollX >= state.scrollX ? 1 : -1;
+        state.scrollX = newScrollX;
+        clampScroll();
+        render();
+      }
+    });
+
+    // --- 15. BUTTON CONTROLS & PAGE SWITCHING ---
+    function scrollToPage(pageIdx) {
+      if (pageIdx < 0) pageIdx = 0;
+      if (pageIdx >= TOTAL_PAGES) pageIdx = TOTAL_PAGES - 1;
+
+      const targetChar = pageIdx * PAGE_SIZE;
+      state.lastScrollDirection = (targetChar * state.charWidth) >= state.scrollX ? 1 : -1;
+      state.scrollX = state.paddingLeft + (targetChar * state.charWidth);
+      clampScroll();
+      render();
+      updateInspector(targetChar);
+    }
+
+    document.getElementById('btnStart').addEventListener('click', () => scrollToPage(0));
+    document.getElementById('btnEnd').addEventListener('click', () => scrollToPage(TOTAL_PAGES - 1));
+
+    document.getElementById('btnPrevPage').addEventListener('click', () => {
+      const active = getActivePage();
+      scrollToPage(Math.max(0, active - 1));
+    });
+
+    document.getElementById('btnNextPage').addEventListener('click', () => {
+      const active = getActivePage();
+      scrollToPage(Math.min(TOTAL_PAGES - 1, active + 1));
+    });
+
+    document.getElementById('btnJumpPage').addEventListener('click', () => {
+      const val = parseInt(document.getElementById('jumpPageInput').value, 10) || 0;
+      scrollToPage(val);
+    });
+
+    document.getElementById('btnZoomIn').addEventListener('click', () => changeFontSize(3));
+    document.getElementById('btnZoomOut').addEventListener('click', () => changeFontSize(-3));
+    document.getElementById('btnZoomReset').addEventListener('click', resetFontSize);
+
+    window.addEventListener('resize', resizeCanvases);
+
+    // --- 16. BOOTSTRAP ---
+    async function init() {
+      measureCharWidth();
+      resizeCanvases();
+
+      // Initial page fetch
+      await apiFetchPage(0);
+      updateInspector(0);
+    }
+
+    init();
+  </script>
+</body>
+</html>
