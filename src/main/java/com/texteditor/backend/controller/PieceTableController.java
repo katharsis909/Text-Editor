@@ -7,6 +7,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -130,5 +133,103 @@ public class PieceTableController {
         String filePath = body.getOrDefault("filePath", "saved_document.txt");
         String result = service.loadFromDiskPlan1(filePath);
         return ResponseEntity.ok(Map.of("message", result));
+    }
+
+    @GetMapping("/users/{username}/files")
+    public ResponseEntity<Map<String, Object>> getUserFiles(@PathVariable String username) {
+        String baseDir = "data/users/" + username;
+        java.io.File dir = new java.io.File(baseDir);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        // Check if user has predefined folders
+        java.io.File projDir = new java.io.File(baseDir + "/projects");
+        java.io.File docsDir = new java.io.File(baseDir + "/notes");
+        java.io.File logsDir = new java.io.File(baseDir + "/logs");
+        projDir.mkdirs();
+        docsDir.mkdirs();
+        logsDir.mkdirs();
+
+        // Ensure 10k chars sample files exist in each folder
+        seedUserFolderFiles(username);
+
+        List<Map<String, String>> files = new ArrayList<>();
+        scanDirectory(dir, dir.getAbsolutePath(), files);
+
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("user", username);
+        resp.put("activeFile", service.getActiveFilePath());
+        resp.put("files", files);
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/users/{username}/open")
+    public ResponseEntity<Map<String, Object>> openUserFile(
+            @PathVariable String username,
+            @RequestBody Map<String, String> body) throws IOException {
+        String relativePath = body.getOrDefault("path", "projects/main.txt");
+        String fullPath = "data/users/" + username + "/" + relativePath;
+        java.io.File file = new java.io.File(fullPath);
+        if (!file.exists()) {
+            file.getParentFile().mkdirs();
+            Files.writeString(file.toPath(), "// Empty file created for " + username + "\n", java.nio.charset.StandardCharsets.UTF_8);
+        }
+        service.loadFromDiskPlan1(fullPath);
+
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("user", username);
+        resp.put("path", relativePath);
+        resp.put("fullPath", fullPath);
+        resp.put("totalLength", service.getTotalLength());
+        resp.put("text", service.getText());
+        return ResponseEntity.ok(resp);
+    }
+
+    private void seedUserFolderFiles(String username) {
+        String base = "data/users/" + username;
+        seedFileIfMissing(base + "/projects/main.txt", "Projects / main.txt (Code Engine)", 10000);
+        seedFileIfMissing(base + "/projects/algorithm.txt", "Projects / algorithm.txt (Piece Table Spec)", 10000);
+        seedFileIfMissing(base + "/notes/ideas.txt", "Notes / ideas.txt (Product Thoughts)", 10000);
+        seedFileIfMissing(base + "/notes/meeting.txt", "Notes / meeting.txt (Architecture Notes)", 10000);
+        seedFileIfMissing(base + "/logs/audit.txt", "Logs / audit.txt (System Events)", 10000);
+    }
+
+    private void seedFileIfMissing(String path, String title, int targetChars) {
+        java.io.File f = new java.io.File(path);
+        if (!f.exists() || f.length() == 0) {
+            try {
+                f.getParentFile().mkdirs();
+                StringBuilder sb = new StringBuilder(targetChars + 200);
+                sb.append("// === ").append(title).append(" ===\n");
+                sb.append("// User document initialized with 10,000+ characters for testing.\n\n");
+                int line = 1;
+                while (sb.length() < targetChars) {
+                    sb.append(String.format("Line %04d: High-performance Piece Table buffer persistence. Authoritative zero-mutation streaming edit line.\n", line++));
+                }
+                java.nio.file.Files.writeString(f.toPath(), sb.toString(), java.nio.charset.StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void scanDirectory(java.io.File node, String baseAbsPath, List<Map<String, String>> out) {
+        if (node.isDirectory()) {
+            java.io.File[] children = node.listFiles();
+            if (children != null) {
+                for (java.io.File c : children) {
+                    scanDirectory(c, baseAbsPath, out);
+                }
+            }
+        } else if (node.isFile()) {
+            String rel = node.getAbsolutePath().substring(baseAbsPath.length());
+            if (rel.startsWith("/")) rel = rel.substring(1);
+            Map<String, String> m = new HashMap<>();
+            m.put("relativePath", rel);
+            m.put("name", node.getName());
+            m.put("size", String.valueOf(node.length()));
+            out.add(m);
+        }
     }
 }

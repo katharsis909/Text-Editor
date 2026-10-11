@@ -35,6 +35,9 @@ public class PieceTableService {
     private Deque<UndoRedoEntry> undoStack = new ArrayDeque<>();
     private Deque<UndoRedoEntry> redoStack = new ArrayDeque<>();
 
+    // Active File Path for automatic saving on every edit
+    private String activeFilePath = "data/users/megha/projects/main.txt";
+
     public PieceTableService() {}
 
     @jakarta.annotation.PostConstruct
@@ -288,6 +291,7 @@ public class PieceTableService {
                 details
         );
         history.add(desc);
+        triggerAutoSave();
         return desc;
     }
 
@@ -398,6 +402,7 @@ public class PieceTableService {
                 details
         );
         history.add(desc);
+        triggerAutoSave();
         return desc;
     }
 
@@ -412,13 +417,41 @@ public class PieceTableService {
             Files.createDirectories(path.getParent());
         }
         Files.writeString(path, consolidated, StandardCharsets.UTF_8);
+        this.activeFilePath = filePath;
         return "Saved " + consolidated.length() + " characters (" + pieceDirectory.size() + " pieces) to " + filePath;
     }
 
     public synchronized String loadFromDiskPlan1(String filePath) throws IOException {
         String content = Files.readString(Path.of(filePath), StandardCharsets.UTF_8);
         initialize(content);
+        this.activeFilePath = filePath;
         return "Loaded " + content.length() + " characters from " + filePath + " into piece table.";
+    }
+
+    /**
+     * Automatic saving on every edit:
+     * Saves the authoritative text to activeFilePath on disk immediately following any edit.
+     */
+    private void triggerAutoSave() {
+        if (activeFilePath != null && !activeFilePath.isEmpty()) {
+            try {
+                Path path = Path.of(activeFilePath);
+                if (path.getParent() != null) {
+                    Files.createDirectories(path.getParent());
+                }
+                Files.writeString(path, getText(), StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                System.err.println("Auto-save warning: " + e.getMessage());
+            }
+        }
+    }
+
+    public synchronized void setActiveFilePath(String path) {
+        this.activeFilePath = path;
+    }
+
+    public synchronized String getActiveFilePath() {
+        return this.activeFilePath;
     }
 
     /**
@@ -463,6 +496,7 @@ public class PieceTableService {
                 details
         );
         history.add(desc);
+        triggerAutoSave();
         return desc;
     }
 
@@ -506,6 +540,7 @@ public class PieceTableService {
                 details
         );
         history.add(desc);
+        triggerAutoSave();
         return desc;
     }
 

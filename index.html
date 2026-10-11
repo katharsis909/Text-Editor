@@ -12,6 +12,7 @@
     :root {
       --bg: #0d1117;
       --card-bg: #161b22;
+      --sidebar-bg: #11151c;
       --gutter-bg: #0d1117;
       --gutter-border: #30363d;
       --border: #30363d;
@@ -25,11 +26,7 @@
       --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       background-color: var(--bg);
@@ -52,6 +49,7 @@
       align-items: center;
       justify-content: space-between;
       flex-shrink: 0;
+      z-index: 10;
     }
 
     .brand {
@@ -76,7 +74,41 @@
     .top-actions {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+    }
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #21262d;
+      border: 1px solid var(--border);
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-size: 12px;
+    }
+
+    .user-avatar {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #0d1117;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 10px;
+    }
+
+    .user-select {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      outline: none;
     }
 
     .btn {
@@ -100,34 +132,9 @@
       border-color: #8b949e;
     }
 
-    .btn:active:not(:disabled) {
-      background: #282e33;
-    }
-
     .btn:disabled {
       opacity: 0.4;
       cursor: not-allowed;
-    }
-
-    .btn-primary {
-      background: #238636;
-      border-color: rgba(240, 246, 252, 0.1);
-      color: #fff;
-    }
-
-    .btn-primary:hover:not(:disabled) {
-      background: #2ea043;
-      border-color: rgba(240, 246, 252, 0.1);
-    }
-
-    .btn-danger {
-      background: rgba(248, 81, 73, 0.15);
-      border-color: rgba(248, 81, 73, 0.4);
-      color: #f85149;
-    }
-
-    .btn-danger:hover:not(:disabled) {
-      background: rgba(248, 81, 73, 0.3);
     }
 
     .dev-link {
@@ -143,11 +150,99 @@
       background: rgba(88, 166, 255, 0.1);
     }
 
+    /* MAIN APP BODY: SIDEBAR + EDITOR */
+    .app-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* SIDEBAR FILE TREE */
+    .sidebar {
+      width: 240px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .file-tree {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    .folder-group {
+      margin-bottom: 6px;
+    }
+
+    .folder-label {
+      padding: 4px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .file-item {
+      padding: 6px 14px 6px 28px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #c9d1d9;
+      transition: background 0.1s ease;
+    }
+
+    .file-item:hover {
+      background: #161b22;
+      color: var(--text);
+    }
+
+    .file-item.active {
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--accent);
+      font-weight: 600;
+      border-left: 2px solid var(--accent);
+    }
+
+    .file-size-badge {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* MAIN EDITOR AREA */
+    .editor-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
     /* TOOLBAR */
     .toolbar {
       background: #12161f;
       border-bottom: 1px solid var(--border);
-      height: 40px;
+      height: 38px;
       padding: 0 16px;
       display: flex;
       align-items: center;
@@ -156,28 +251,44 @@
       flex-shrink: 0;
     }
 
-    .toolbar-group {
+    .active-file-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
+    .auto-save-pill {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      padding: 2px 6px;
+      border-radius: 10px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .auto-save-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
     .toolbar-sep {
       width: 1px;
-      height: 18px;
+      height: 16px;
       background: var(--border);
       margin: 0 4px;
     }
 
-    .zoom-val {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      min-width: 38px;
-      text-align: center;
-      color: var(--text-muted);
-    }
-
-    /* MAIN EDITOR AREA */
+    /* CANVAS CONTAINER */
     .editor-container {
       flex: 1;
       display: flex;
@@ -187,7 +298,6 @@
       outline: none;
     }
 
-    /* LINE NUMBERS GUTTER CANVAS */
     #gutterCanvas {
       background: var(--gutter-bg);
       border-right: 1px solid var(--gutter-border);
@@ -195,7 +305,6 @@
       display: block;
     }
 
-    /* TEXT CONTENT CANVAS */
     #textCanvas {
       flex: 1;
       background: var(--bg);
@@ -203,7 +312,7 @@
       cursor: text;
     }
 
-    /* SCROLLBARS */
+    /* SCROLLBAR */
     .v-scrollbar {
       position: absolute;
       top: 0;
@@ -270,10 +379,22 @@
     <div class="brand">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
       <span>Text Editor</span>
-      <span class="brand-badge">Piece Table Multi-Line</span>
+      <span class="brand-badge">Multi-Line Piece Table</span>
     </div>
 
     <div class="top-actions">
+      <!-- USER LOGIN SELECTOR -->
+      <div class="user-profile">
+        <div class="user-avatar" id="avatarLetter">M</div>
+        <select class="user-select" id="selectUser">
+          <option value="megha">User: megha</option>
+          <option value="john">User: john</option>
+          <option value="alice">User: alice</option>
+        </select>
+      </div>
+
+      <div class="toolbar-sep"></div>
+
       <button id="btnUndo" class="btn" title="Undo (Ctrl/Cmd+Z)">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>
         Undo
@@ -283,57 +404,79 @@
         Redo
       </button>
 
-      <button id="btnDelete" class="btn btn-danger" disabled title="Delete selection (Backspace/Delete)">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-        Delete
-      </button>
-
       <div class="toolbar-sep"></div>
 
-      <a href="dev.html" class="dev-link" target="_blank" title="Open low-level Piece Directory & Memory Inspector">
-        Inspect Piece Table &rarr;
+      <a href="dev.html" class="dev-link" target="_blank" title="Open Multi-Line RAM &amp; Cache Monitor">
+        Inspect RAM Pages &rarr;
       </a>
     </div>
   </header>
 
-  <!-- TOOLBAR -->
-  <div class="toolbar">
-    <div class="toolbar-group">
-      <button id="btnZoomOut" class="btn" style="padding: 2px 7px;">-</button>
-      <span id="lblZoom" class="zoom-val">16px</span>
-      <button id="btnZoomIn" class="btn" style="padding: 2px 7px;">+</button>
-    </div>
+  <!-- APP BODY: FOLDERS SIDEBAR + EDITOR -->
+  <div class="app-body">
+    <!-- FOLDERS & FILES SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>Folders &amp; Files</span>
+        <button id="btnRefreshFiles" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" title="Refresh Files">⟳</button>
+      </div>
+      <div class="file-tree" id="fileTreeContainer">
+        <!-- Populated dynamically with folders (projects, notes, logs) -->
+      </div>
+    </aside>
 
-    <div class="toolbar-sep"></div>
+    <!-- MAIN EDITOR SECTION -->
+    <main class="editor-section">
+      <!-- TOOLBAR -->
+      <div class="toolbar">
+        <div class="active-file-title" id="lblCurrentFile">
+          📁 projects/main.txt
+        </div>
 
-    <div class="toolbar-group" style="color: var(--text-muted);">
-      <span>Shortcuts:</span>
-      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Arrows (Navigate)</span> &bull;
-      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Enter (New Line)</span> &bull;
-      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Shift+Arrows (Select)</span> &bull;
-      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Ctrl+Home/End (Jump)</span>
-    </div>
+        <div class="auto-save-pill">
+          <div class="auto-save-dot"></div>
+          Auto-Save Active
+        </div>
+
+        <div class="toolbar-sep"></div>
+
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button id="btnZoomOut" class="btn" style="padding: 2px 7px;">-</button>
+          <span id="lblZoom" style="font-family:var(--font-mono); font-size:11px; min-width:36px; text-align:center; color:var(--text-muted);">16px</span>
+          <button id="btnZoomIn" class="btn" style="padding: 2px 7px;">+</button>
+        </div>
+
+        <div class="toolbar-sep"></div>
+
+        <div style="color: var(--text-muted); font-size: 11px;">
+          <span>Keys:</span>
+          <span style="color:var(--text); font-family:var(--font-mono);">Enter (Newline)</span> &bull;
+          <span style="color:var(--text); font-family:var(--font-mono);">Backspace (Delete)</span> &bull;
+          <span style="color:var(--text); font-family:var(--font-mono);">Shift+Arrow (Select)</span>
+        </div>
+      </div>
+
+      <!-- EDITOR CANVAS VIEWPORT -->
+      <div class="editor-container" id="editorContainer" tabindex="0">
+        <canvas id="gutterCanvas" width="60"></canvas>
+        <canvas id="textCanvas"></canvas>
+
+        <div class="v-scrollbar" id="vScrollbar">
+          <div class="v-thumb" id="vThumb"></div>
+        </div>
+      </div>
+
+      <!-- STATUS FOOTER -->
+      <footer>
+        <div class="status-items">
+          <div id="statCursor">Ln 1, Col 1 (Pos #0)</div>
+          <div id="statSelection" style="display:none;" class="status-highlight">0 selected</div>
+          <div id="statDoc">Lines: 1 | Chars: 0</div>
+        </div>
+        <div class="toast" id="toastMsg">Ready</div>
+      </footer>
+    </main>
   </div>
-
-  <!-- EDITOR CANVAS VIEWPORT -->
-  <div class="editor-container" id="editorContainer" tabindex="0">
-    <canvas id="gutterCanvas" width="60"></canvas>
-    <canvas id="textCanvas"></canvas>
-
-    <div class="v-scrollbar" id="vScrollbar">
-      <div class="v-thumb" id="vThumb"></div>
-    </div>
-  </div>
-
-  <!-- STATUS FOOTER -->
-  <footer>
-    <div class="status-items">
-      <div id="statCursor">Ln 1, Col 1 (Pos #0)</div>
-      <div id="statSelection" style="display:none;" class="status-highlight">0 selected</div>
-      <div id="statDoc">Lines: 1 | Chars: 0</div>
-    </div>
-    <div class="toast" id="toastMsg">Ready</div>
-  </footer>
 
   <script>
     const BACKEND_URL = "http://localhost:8081/api/piecetable";
@@ -341,6 +484,8 @@
 
     // Application State
     const state = {
+      currentUser: "megha",
+      currentFilePath: "projects/main.txt",
       fullText: "",
       lines: [""],
       lineStartOffsets: [0],
@@ -358,14 +503,20 @@
       scrollY: 0,
 
       // Selection & Cursor
-      // Anchor & Focus are global character indices [0 .. totalChars]
       selectionAnchor: 0,
       selectionFocus: 0,
       isSelecting: false,
 
-      // Server status
-      isBusy: false
+      // Mouse auto-scroll state
+      lastMouseX: 0,
+      lastMouseY: 0,
+
+      // Server status & Edit Queue
+      isBusy: false,
+      editQueue: []
     };
+
+    let autoScrollRaf = null;
 
     // DOM Elements
     const editorContainer = document.getElementById('editorContainer');
@@ -377,9 +528,14 @@
     const vScrollbar = document.getElementById('vScrollbar');
     const vThumb = document.getElementById('vThumb');
 
+    const selectUser = document.getElementById('selectUser');
+    const avatarLetter = document.getElementById('avatarLetter');
+    const fileTreeContainer = document.getElementById('fileTreeContainer');
+    const lblCurrentFile = document.getElementById('lblCurrentFile');
+    const btnRefreshFiles = document.getElementById('btnRefreshFiles');
+
     const btnUndo = document.getElementById('btnUndo');
     const btnRedo = document.getElementById('btnRedo');
-    const btnDelete = document.getElementById('btnDelete');
     const btnZoomIn = document.getElementById('btnZoomIn');
     const btnZoomOut = document.getElementById('btnZoomOut');
     const lblZoom = document.getElementById('lblZoom');
@@ -393,7 +549,101 @@
       toastMsg.textContent = msg;
     }
 
-    // --- 1. FONT METRICS & LINE BREAK INDEXING ---
+    // --- 1. USER & FILES MANAGEMENT ---
+    async function loadUserFiles() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/users/${state.currentUser}/files`);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+
+        renderFileTree(data.files || []);
+      } catch (err) {
+        showToast("Error loading user files: " + err.message);
+      }
+    }
+
+    function renderFileTree(files) {
+      fileTreeContainer.innerHTML = '';
+
+      // Group files by folder
+      const folders = {};
+      files.forEach(f => {
+        const parts = f.relativePath.split('/');
+        const folderName = parts.length > 1 ? parts[0] : 'root';
+        if (!folders[folderName]) folders[folderName] = [];
+        folders[folderName].push(f);
+      });
+
+      for (const [folder, folderFiles] of Object.entries(folders)) {
+        const group = document.createElement('div');
+        group.className = 'folder-group';
+
+        const label = document.createElement('div');
+        label.className = 'folder-label';
+        label.innerHTML = `📁 ${folder}`;
+        group.appendChild(label);
+
+        folderFiles.forEach(f => {
+          const item = document.createElement('div');
+          item.className = `file-item ${f.relativePath === state.currentFilePath ? 'active' : ''}`;
+          item.innerHTML = `
+            <span>📄 ${f.name}</span>
+            <span class="file-size-badge">${(parseInt(f.size) / 1024).toFixed(1)}k</span>
+          `;
+          item.onclick = () => openFile(f.relativePath);
+          group.appendChild(item);
+        });
+
+        fileTreeContainer.appendChild(group);
+      }
+    }
+
+    async function openFile(relPath) {
+      if (state.isBusy) return;
+      state.isBusy = true;
+      showToast(`Loading ${relPath}...`);
+
+      try {
+        const res = await fetch(`${BACKEND_URL}/users/${state.currentUser}/open`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: relPath })
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+
+        state.currentFilePath = relPath;
+        lblCurrentFile.textContent = `📁 ${relPath}`;
+        state.fullText = data.text || "";
+        reindexLines();
+
+        state.selectionAnchor = 0;
+        state.selectionFocus = 0;
+        state.scrollY = 0;
+        state.scrollX = 0;
+        clampScroll();
+        render();
+
+        loadUserFiles();
+        showToast(`Opened ${relPath} (${state.totalChars.toLocaleString()} chars)`);
+      } catch (err) {
+        showToast("Error opening file: " + err.message);
+      } finally {
+        state.isBusy = false;
+        editorContainer.focus();
+      }
+    }
+
+    selectUser.addEventListener('change', (e) => {
+      state.currentUser = e.target.value;
+      avatarLetter.textContent = state.currentUser[0].toUpperCase();
+      state.currentFilePath = "projects/main.txt";
+      openFile(state.currentFilePath);
+    });
+
+    btnRefreshFiles.addEventListener('click', loadUserFiles);
+
+    // --- 2. FONT METRICS & LINE INDEXING ---
     function measureFont() {
       const probeCanvas = document.createElement('canvas');
       const ctx = probeCanvas.getContext('2d');
@@ -422,14 +672,12 @@
       state.lineStartOffsets = offsets;
       state.totalChars = text.length;
 
-      // Adjust gutter width based on total lines
       const maxDigits = Math.max(3, String(lines.length).length);
       state.gutterWidth = Math.max(50, (maxDigits * 8.5) + 24);
 
       statDoc.textContent = `Lines: ${lines.length.toLocaleString()} | Chars: ${state.totalChars.toLocaleString()}`;
     }
 
-    // Coordinate conversions: Global Index <-> (Line, Column)
     function indexToLineCol(index) {
       index = Math.max(0, Math.min(state.totalChars, index));
       const offsets = state.lineStartOffsets;
@@ -462,7 +710,7 @@
       return { start, end, length: end - start };
     }
 
-    // --- 2. CANVAS RENDERING & VIRTUAL VIEWPORT ---
+    // --- 3. CANVAS RENDERING & SCROLLING ---
     function resizeCanvases() {
       state.dpr = window.devicePixelRatio || 1;
       const rect = editorContainer.getBoundingClientRect();
@@ -496,7 +744,6 @@
     }
 
     function getMaxScrollX() {
-      // Find approximate max line width
       let maxCols = 80;
       for (let i = 0; i < Math.min(200, state.lines.length); i++) {
         if (state.lines[i].length > maxCols) maxCols = state.lines[i].length;
@@ -554,21 +801,18 @@
       const viewHeight = editorContainer.clientHeight;
       const textWidth = textCanvas.clientWidth;
 
-      // 1. Clear canvases
       gutterCtx.fillStyle = "#0d1117";
       gutterCtx.fillRect(0, 0, state.gutterWidth, viewHeight);
 
       textCtx.fillStyle = "#0d1117";
       textCtx.fillRect(0, 0, textWidth, viewHeight);
 
-      // 2. Visible line range
       const startLine = Math.max(0, Math.floor(state.scrollY / state.lineHeight));
       const endLine = Math.min(state.lines.length - 1, Math.ceil((state.scrollY + viewHeight) / state.lineHeight));
 
       const { start: selStart, end: selEnd, length: selLen } = getSelectionRange();
       const activeLineIdx = indexToLineCol(state.selectionFocus).line;
 
-      // Setup typography
       textCtx.font = `${state.fontSize}px ${FONT_FAMILY}`;
       textCtx.textBaseline = "middle";
       gutterCtx.font = `${Math.round(state.fontSize * 0.85)}px ${FONT_FAMILY}`;
@@ -592,7 +836,7 @@
         gutterCtx.textAlign = "right";
         gutterCtx.fillText(`${l + 1}`, state.gutterWidth - 14, lineY + (state.lineHeight / 2));
 
-        // Selection Highlight on this line
+        // Selection Highlight
         if (selLen > 0 && selEnd > lineStartOffset && selStart <= lineEndOffset) {
           const selColStart = Math.max(0, selStart - lineStartOffset);
           const selColEnd = Math.min(lineText.length + 1, selEnd - lineStartOffset);
@@ -610,7 +854,7 @@
         const textX = 16 - state.scrollX;
         textCtx.fillText(lineText, textX, lineY + (state.lineHeight / 2));
 
-        // Caret Cursor (if no range is selected)
+        // Caret Cursor
         if (selLen === 0 && l === activeLineIdx) {
           const col = state.selectionFocus - lineStartOffset;
           const caretX = textX + (col * state.charWidth);
@@ -630,16 +874,12 @@
       if (length > 0) {
         statSelection.style.display = 'block';
         statSelection.textContent = `${length.toLocaleString()} selected`;
-        btnDelete.disabled = false;
-        btnDelete.textContent = `Delete (${length.toLocaleString()})`;
       } else {
         statSelection.style.display = 'none';
-        btnDelete.disabled = true;
-        btnDelete.textContent = `Delete`;
       }
     }
 
-    // --- 3. MOUSE COORDINATES TO LINE/COL HIT-TESTING ---
+    // --- 4. HIT-TESTING & VERTICAL EDGE AUTO-SCROLL LOOP ---
     function getIndexFromMouse(clientX, clientY) {
       const rect = textCanvas.getBoundingClientRect();
       const relY = clientY - rect.top + state.scrollY;
@@ -651,140 +891,171 @@
       return lineColToIndex(line, col);
     }
 
-    // --- 4. BACKEND INTEGRATION (READ, INSERT, DELETE, UNDO, REDO) ---
-    async function fetchFullText() {
+    function startAutoScrollLoop() {
+      if (autoScrollRaf) return;
+
+      function autoScrollTick() {
+        if (!state.isSelecting) {
+          autoScrollRaf = null;
+          return;
+        }
+
+        const rect = textCanvas.getBoundingClientRect();
+        const mouseY = state.lastMouseY;
+        const margin = 50;
+        let deltaY = 0;
+
+        if (mouseY < rect.top + margin) {
+          // Near or above top edge
+          const dist = Math.max(1, (rect.top + margin) - mouseY);
+          deltaY = -Math.min(35, dist * 0.8);
+        } else if (mouseY > rect.bottom - margin) {
+          // Near or below bottom edge
+          const dist = Math.max(1, mouseY - (rect.bottom - margin));
+          deltaY = Math.min(35, dist * 0.8);
+        }
+
+        if (deltaY !== 0) {
+          state.scrollY += deltaY;
+          clampScroll();
+          state.selectionFocus = getIndexFromMouse(state.lastMouseX, state.lastMouseY);
+          render();
+        }
+
+        autoScrollRaf = requestAnimationFrame(autoScrollTick);
+      }
+
+      autoScrollRaf = requestAnimationFrame(autoScrollTick);
+    }
+
+    // --- 5. EDIT QUEUE & SYNCHRONOUS BACKEND MUTATIONS (NO OPTIMISTIC UI) ---
+    async function enqueueOperation(fn) {
+      state.editQueue.push(fn);
+      processQueue();
+    }
+
+    async function processQueue() {
+      if (state.isBusy || state.editQueue.length === 0) return;
+      state.isBusy = true;
+
+      const nextOp = state.editQueue.shift();
       try {
-        showToast("Syncing with backend Piece Table...");
-        const res = await fetch(`${BACKEND_URL}/text`);
-        if (!res.ok) throw new Error("Backend HTTP " + res.status);
-        const data = await res.json();
-        state.fullText = data.text || "";
-        reindexLines();
-        render();
-        showToast("Connected to Piece Table (Authoritative)");
+        await nextOp();
       } catch (err) {
-        showToast("⚠️ Could not connect to Spring Boot backend: " + err.message);
+        showToast("Operation error: " + err.message);
+      } finally {
+        state.isBusy = false;
+        processQueue();
       }
     }
 
     async function apiInsert(pos, text) {
-      if (state.isBusy) return;
-      state.isBusy = true;
-      showToast("Inserting text into Piece Table...");
+      showToast("Syncing edit to server...");
+      const res = await fetch(`${BACKEND_URL}/insert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: pos, text: text })
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
 
-      try {
-        const res = await fetch(`${BACKEND_URL}/insert`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ position: pos, text: text })
-        });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        await fetchFullText();
+      // Re-fetch authoritative full text
+      const textRes = await fetch(`${BACKEND_URL}/text`);
+      const textData = await textRes.json();
+      state.fullText = textData.text || "";
+      reindexLines();
 
-        state.selectionAnchor = pos + text.length;
-        state.selectionFocus = pos + text.length;
-        ensureCursorVisible();
-        render();
-        showToast("Inserted successfully");
-      } catch (err) {
-        showToast("Error inserting: " + err.message);
-      } finally {
-        state.isBusy = false;
-      }
+      state.selectionAnchor = pos + text.length;
+      state.selectionFocus = pos + text.length;
+      ensureCursorVisible();
+      render();
+      showToast("Saved to disk automatically");
     }
 
     async function apiDelete() {
       const { start, length } = getSelectionRange();
-      if (length === 0 || state.isBusy) return;
-      state.isBusy = true;
-      showToast(`Deleting ${length} characters...`);
+      if (length === 0) return;
+      showToast(`Syncing delete of ${length} chars...`);
 
-      try {
-        const res = await fetch(`${BACKEND_URL}/delete`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ position: start, length: length })
-        });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        await fetchFullText();
+      const res = await fetch(`${BACKEND_URL}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: start, length: length })
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
 
-        state.selectionAnchor = start;
-        state.selectionFocus = start;
-        ensureCursorVisible();
-        render();
-        showToast("Deleted successfully");
-      } catch (err) {
-        showToast("Error deleting: " + err.message);
-      } finally {
-        state.isBusy = false;
-      }
+      const textRes = await fetch(`${BACKEND_URL}/text`);
+      const textData = await textRes.json();
+      state.fullText = textData.text || "";
+      reindexLines();
+
+      state.selectionAnchor = start;
+      state.selectionFocus = start;
+      ensureCursorVisible();
+      render();
+      showToast("Saved to disk automatically");
     }
 
     async function apiUndo() {
-      if (state.isBusy) return;
-      state.isBusy = true;
-      showToast("Undoing operation...");
+      showToast("Undoing operation on server...");
+      const res = await fetch(`${BACKEND_URL}/undo`, { method: "POST" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
 
-      try {
-        const res = await fetch(`${BACKEND_URL}/undo`, { method: "POST" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        await fetchFullText();
+      const textRes = await fetch(`${BACKEND_URL}/text`);
+      const textData = await textRes.json();
+      state.fullText = textData.text || "";
+      reindexLines();
 
-        const desc = data.description || {};
-        const pos = Math.min(state.totalChars, desc.position || 0);
-        state.selectionAnchor = state.selectionFocus = pos;
-        ensureCursorVisible();
-        render();
-        showToast(desc.details || "Undo completed");
-      } catch (err) {
-        showToast("Undo failed: " + err.message);
-      } finally {
-        state.isBusy = false;
-      }
+      const desc = data.description || {};
+      const pos = Math.min(state.totalChars, desc.position || 0);
+      state.selectionAnchor = state.selectionFocus = pos;
+      ensureCursorVisible();
+      render();
+      showToast(desc.details || "Undo completed");
     }
 
     async function apiRedo() {
-      if (state.isBusy) return;
-      state.isBusy = true;
-      showToast("Redoing operation...");
+      showToast("Redoing operation on server...");
+      const res = await fetch(`${BACKEND_URL}/redo`, { method: "POST" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
 
-      try {
-        const res = await fetch(`${BACKEND_URL}/redo`, { method: "POST" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        await fetchFullText();
+      const textRes = await fetch(`${BACKEND_URL}/text`);
+      const textData = await textRes.json();
+      state.fullText = textData.text || "";
+      reindexLines();
 
-        const desc = data.description || {};
-        const pos = Math.min(state.totalChars, desc.position || 0);
-        state.selectionAnchor = state.selectionFocus = pos;
-        ensureCursorVisible();
-        render();
-        showToast(desc.details || "Redo completed");
-      } catch (err) {
-        showToast("Redo failed: " + err.message);
-      } finally {
-        state.isBusy = false;
-      }
+      const desc = data.description || {};
+      const pos = Math.min(state.totalChars, desc.position || 0);
+      state.selectionAnchor = state.selectionFocus = pos;
+      ensureCursorVisible();
+      render();
+      showToast(desc.details || "Redo completed");
     }
 
-    // --- 5. INTERACTIVE EVENT HANDLERS ---
+    // --- 6. EVENT HANDLERS ---
     textCanvas.addEventListener('mousedown', (e) => {
       editorContainer.focus();
       if (e.button === 0) {
+        state.lastMouseX = e.clientX;
+        state.lastMouseY = e.clientY;
         const idx = getIndexFromMouse(e.clientX, e.clientY);
         state.isSelecting = true;
+
         if (e.shiftKey) {
           state.selectionFocus = idx;
         } else {
           state.selectionAnchor = state.selectionFocus = idx;
         }
         render();
+        startAutoScrollLoop();
       }
     });
 
     window.addEventListener('mousemove', (e) => {
       if (state.isSelecting) {
+        state.lastMouseX = e.clientX;
+        state.lastMouseY = e.clientY;
         state.selectionFocus = getIndexFromMouse(e.clientX, e.clientY);
         render();
       }
@@ -793,6 +1064,10 @@
     window.addEventListener('mouseup', () => {
       if (state.isSelecting) {
         state.isSelecting = false;
+        if (autoScrollRaf) {
+          cancelAnimationFrame(autoScrollRaf);
+          autoScrollRaf = null;
+        }
         render();
       }
     });
@@ -812,16 +1087,16 @@
       // Undo / Redo
       if (isCtrlOrCmd && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
-        apiUndo();
+        enqueueOperation(() => apiUndo());
         return;
       }
       if ((isCtrlOrCmd && e.shiftKey && (e.key === 'z' || e.key === 'Z')) || (isCtrlOrCmd && (e.key === 'y' || e.key === 'Y'))) {
         e.preventDefault();
-        apiRedo();
+        enqueueOperation(() => apiRedo());
         return;
       }
 
-      // Font size
+      // Font zoom
       if (isCtrlOrCmd && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         changeZoom(2);
@@ -927,27 +1202,27 @@
         if (e.key === 'Backspace' || e.key === 'Delete') {
           e.preventDefault();
           if (selLen > 0) {
-            apiDelete();
+            enqueueOperation(() => apiDelete());
           } else if (e.key === 'Backspace' && state.selectionFocus > 0) {
             state.selectionAnchor = state.selectionFocus - 1;
-            apiDelete();
+            enqueueOperation(() => apiDelete());
           } else if (e.key === 'Delete' && state.selectionFocus < state.totalChars) {
             state.selectionAnchor = state.selectionFocus + 1;
-            apiDelete();
+            enqueueOperation(() => apiDelete());
           }
           return;
         }
 
-        // Enter Key: Insert New Line!
+        // Enter Key: Insert Newline
         if (e.key === 'Enter') {
           e.preventDefault();
           if (selLen > 0) {
-            (async () => {
+            enqueueOperation(async () => {
               await apiDelete();
               await apiInsert(state.selectionFocus, "\n");
-            })();
+            });
           } else {
-            apiInsert(state.selectionFocus, "\n");
+            enqueueOperation(() => apiInsert(state.selectionFocus, "\n"));
           }
           return;
         }
@@ -955,26 +1230,25 @@
         // Tab Key: Insert 4 spaces
         if (e.key === 'Tab') {
           e.preventDefault();
-          apiInsert(state.selectionFocus, "    ");
+          enqueueOperation(() => apiInsert(state.selectionFocus, "    "));
           return;
         }
 
-        // Printable text typing
+        // Printable keys
         if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
           e.preventDefault();
           if (selLen > 0) {
-            (async () => {
+            enqueueOperation(async () => {
               await apiDelete();
               await apiInsert(state.selectionFocus, e.key);
-            })();
+            });
           } else {
-            apiInsert(state.selectionFocus, e.key);
+            enqueueOperation(() => apiInsert(state.selectionFocus, e.key));
           }
         }
       }
     });
 
-    // Zoom Buttons
     function changeZoom(delta) {
       state.fontSize = Math.max(12, Math.min(48, state.fontSize + delta));
       measureFont();
@@ -983,9 +1257,8 @@
 
     btnZoomIn.addEventListener('click', () => changeZoom(2));
     btnZoomOut.addEventListener('click', () => changeZoom(-2));
-    btnUndo.addEventListener('click', () => apiUndo());
-    btnRedo.addEventListener('click', () => apiRedo());
-    btnDelete.addEventListener('click', () => apiDelete());
+    btnUndo.addEventListener('click', () => enqueueOperation(() => apiUndo()));
+    btnRedo.addEventListener('click', () => enqueueOperation(() => apiRedo()));
 
     // Scrollbar Dragging
     let isDraggingThumb = false;
@@ -1030,7 +1303,8 @@
     async function init() {
       measureFont();
       resizeCanvases();
-      await fetchFullText();
+      await loadUserFiles();
+      await openFile(state.currentFilePath);
       editorContainer.focus();
     }
 
