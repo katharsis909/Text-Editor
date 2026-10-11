@@ -13,6 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/piecetable")
+@CrossOrigin(origins = "*")
 public class PieceTableController {
 
     private final PieceTableService service;
@@ -22,18 +23,39 @@ public class PieceTableController {
     }
 
     @PostMapping("/init")
-    public ResponseEntity<EditDescription> initialize(@RequestBody Map<String, String> body) {
+    public ResponseEntity<Map<String, Object>> initialize(@RequestBody Map<String, String> body) {
         String text = body.getOrDefault("text", "");
         EditDescription desc = service.initialize(text);
-        return ResponseEntity.ok(desc);
+        Map<String, Object> response = new HashMap<>();
+        response.put("description", desc);
+        response.put("totalLength", service.getTotalLength());
+        response.put("piecesCount", service.getPieceDirectory().size());
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/slice")
+    public ResponseEntity<Map<String, Object>> getSlice(
+            @RequestParam(defaultValue = "0") int start,
+            @RequestParam(defaultValue = "1024") int length) {
+        String slice = service.getSlice(start, length);
+        Map<String, Object> response = new HashMap<>();
+        response.put("start", start);
+        response.put("length", slice.length());
+        response.put("content", slice);
+        response.put("totalLength", service.getTotalLength());
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/insert")
-    public ResponseEntity<EditDescription> insert(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> insert(@RequestBody Map<String, Object> body) {
         int position = (int) body.getOrDefault("position", 0);
         String text = (String) body.getOrDefault("text", "");
         EditDescription desc = service.insert(position, text);
-        return ResponseEntity.ok(desc);
+        Map<String, Object> response = new HashMap<>();
+        response.put("description", desc);
+        response.put("newTotalLength", service.getTotalLength());
+        response.put("piecesCount", service.getPieceDirectory().size());
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/delete")

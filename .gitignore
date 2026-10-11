@@ -28,5 +28,9 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+### Logs ###
+backend.log
+*.log
+
 ### macOS ###
 .DS_Store

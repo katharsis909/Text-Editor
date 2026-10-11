@@ -78,3 +78,33 @@ The piece directory is rewritten in a single pass:
 Under **Plan 1**:
 - When saving: The engine iterates through the active `pieceDirectory` in order, resolves the slices from `originalBuffer` and `addBuffer`, concatenates the unified string, and rewrites the whole file to disk.
 - When loading: Reads the whole file from disk and initializes a fresh Piece Table with that content as `originalBuffer`.
+
+---
+
+## 6. Frontend Integration: Read + Add with Server-Authoritative Consistency
+
+### 6.1 Scope & Separation
+- **Frontend Scope**: Strictly **Read + Add** (deletion concept has been completely removed from frontend controls).
+- **Backend Scope**: Manages the authoritative Piece Table state, piece descriptors order, and persistence.
+
+### 6.2 The Read + Add Flow
+1. **Read (Logical Window Paging)**:
+   - Frontend requests slices on demand: `GET /api/piecetable/slice?start=${P * 1024}&length=1024`.
+   - Backend extracts the slice in $O(\text{pieces})$ without building the full document string.
+   - Frontend maintains its 5-page sliding cache with prefetching near edges and farthest-page eviction.
+2. **Add (Middle Insertions)**:
+   - When a user types or clicks "Insert", frontend issues: `POST /api/piecetable/insert { position, text }`.
+   - Backend appends to `addBuffer`, splits the target piece, and responds with the new total length and piece count.
+   - Frontend receives the authoritative ACK:
+     - Invalidates cached pages from the edit point onwards.
+     - Re-fetches the authoritative slice for the active page.
+     - Advances cursor selection and re-renders.
+
+### 6.3 Design Decision: Why Optimistic UI Updates Were Deliberately Omitted
+In single-user local applications, optimistic updates render characters immediately before server confirmation. However, this was deliberately avoided here for the following architectural reasons:
+
+1. **Multi-User Collaboration Readiness**:
+   - In future iterations supporting multiple concurrent users, client-side speculative mutations cause character indices to diverge when simultaneous edits occur.
+   - Without Operational Transformation (OT) or Conflict-Free Replicated Data Types (CRDTs), optimistic edits lead to desynchronization and race conditions.
+2. **Deterministic Source of Truth**:
+   - By awaiting the server's authoritative acknowledgment, all connected clients always reflect the identical piece descriptor order and global character coordinates.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Text Editor Foundation - 1024-Char Chunks & Virtual Paging</title>
+  <title>Text Editor - Piece Table Spring Boot Backend (Read + Add)</title>
   <style>
     :root {
       --bg: #0b0f19;
@@ -14,8 +14,8 @@
       --accent: #38bdf8;
       --accent-glow: rgba(56, 189, 248, 0.25);
       --highlight: #f43f5e;
-      --page-marker: #a855f7;
       --success: #10b981;
+      --page-marker: #a855f7;
       --font-mono: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
     }
 
@@ -68,6 +68,16 @@
       background: rgba(56, 189, 248, 0.15);
       border: 1px solid rgba(56, 189, 248, 0.3);
       color: var(--accent);
+      font-family: var(--font-mono);
+    }
+
+    .badge-backend {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--success);
       font-family: var(--font-mono);
     }
 
@@ -225,7 +235,7 @@
       font-style: italic;
     }
 
-    /* Controls Bar */
+    /* Insertion & Controls Bar */
     .controls-bar {
       display: flex;
       justify-content: space-between;
@@ -243,6 +253,21 @@
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+
+    input[type="text"] {
+      background: #090e1a;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      outline: none;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--accent);
     }
 
     button {
@@ -263,6 +288,18 @@
     button:hover {
       background: #334466;
       border-color: var(--accent);
+    }
+
+    button.btn-add {
+      background: #1e3a5f;
+      border-color: var(--accent);
+      color: #e0f2fe;
+      font-weight: 600;
+    }
+
+    button.btn-add:hover {
+      background: #0284c7;
+      color: #ffffff;
     }
 
     /* Editor Viewport & Frame */
@@ -379,11 +416,12 @@
   <div class="container">
     <header>
       <h1>
-        Virtual Chunks &amp; Paging Engine
+        Spring Boot Piece Table Editor
+        <span class="badge-backend">Backend: http://localhost:8081</span>
         <span class="badge">1024 Chars / Page &bull; Max 5 in RAM</span>
       </h1>
       <div style="font-size: 12px; color: var(--muted);">
-        Zoom: <span class="shortcut-hint">Ctrl +</span> / <span class="shortcut-hint">Ctrl -</span> &bull; Drag to Scroll
+        Type directly or use Insert box &bull; <span class="shortcut-hint">Ctrl +/-</span> Zoom
       </div>
     </header>
 
@@ -401,15 +439,15 @@
         </div>
       </div>
       <div class="log-strip" id="activityLog">
-        [System Ready]: Page #0 loaded. Scroll right towards 1024 to trigger prefetch.
+        Connecting to Spring Boot backend at http://localhost:8081...
       </div>
     </div>
 
     <!-- LIVE INSPECTOR: CHAR BEFORE, CLICKED CHAR, CHAR AFTER -->
     <div class="inspector-panel">
       <div class="inspector-header">
-        <span>Cursor Inspector</span>
-        <span id="inspectStatus">Click any character below</span>
+        <span>Cursor Inspector (Authoritative Server View)</span>
+        <span id="inspectStatus">Click any character below to position cursor</span>
       </div>
 
       <div class="triplet-container">
@@ -422,7 +460,7 @@
 
         <!-- Clicked Character -->
         <div class="char-card clicked" id="cardCurrent">
-          <div class="char-card-label">2. Clicked Character</div>
+          <div class="char-card-label">2. Clicked Character (Insertion Point)</div>
           <div class="char-card-glyph" id="glyphCurrent">-</div>
           <div class="char-card-index" id="indexCurrent">Index: -</div>
         </div>
@@ -436,7 +474,19 @@
       </div>
     </div>
 
-    <!-- CONTROLS & NAVIGATION -->
+    <!-- ADD / INSERTION BAR -->
+    <div class="controls-bar" style="border-color: #1e3a5f; background: #0c1424;">
+      <div class="control-group" style="flex: 1;">
+        <span style="font-weight: 600; color: var(--accent);">Add Text:</span>
+        <input type="text" id="inputInsertText" placeholder="Enter text to insert in middle..." style="flex: 1; max-width: 400px;" value=" >>> [MIDDLE INSERTION] <<< ">
+        <button id="btnInsert" class="btn-add">&plus; Insert at Selected Index</button>
+      </div>
+      <div class="control-group">
+        <span style="font-size: 11px; color: var(--muted);">Direct typing on editor canvas also inserts characters!</span>
+      </div>
+    </div>
+
+    <!-- NAVIGATION CONTROLS -->
     <div class="controls-bar">
       <div class="control-group">
         <button id="btnPrevPage">&larr; Prev Page</button>
@@ -455,7 +505,7 @@
 
       <div class="control-group">
         <span style="color: var(--muted); font-size: 12px;">Jump to Page:</span>
-        <input type="number" id="jumpPageInput" value="0" min="0" max="49" style="background: #090e1a; border: 1px solid var(--border); color: #fff; padding: 4px 6px; border-radius: 4px; width: 55px; font-family: var(--font-mono);">
+        <input type="number" id="jumpPageInput" value="0" min="0" style="background: #090e1a; border: 1px solid var(--border); color: #fff; padding: 4px 6px; border-radius: 4px; width: 60px; font-family: var(--font-mono);">
         <button id="btnJumpPage">Go</button>
       </div>
     </div>
@@ -477,25 +527,25 @@
     <div class="status-bar">
       <div>Scroll: <span id="statScroll">0 px</span> / <span id="statMaxScroll">0 px</span></div>
       <div>Char Width: <span id="statCharWidth">0.0000 px</span> | DPR: <span id="statDpr">1.0</span></div>
-      <div>Total Simulated: 50 Pages (51,200 chars)</div>
+      <div id="statDocumentInfo">Document: 0 chars | Pieces: 0</div>
     </div>
   </div>
 
   <script>
-    // --- 1. ARCHITECTURE CONSTANTS ---
-    const PAGE_SIZE = 1024;           // Exact chunk size in characters
+    // --- 1. CONSTANTS & BACKEND CONFIGURATION ---
+    const BACKEND_URL = "http://localhost:8081/api/piecetable";
+    const PAGE_SIZE = 1024;           // Logical view chunk size
     const MAX_PAGES_IN_MEMORY = 5;    // Max pages cached in frontend RAM
-    const PREFETCH_THRESHOLD = 200;   // Trigger prefetch when within 200 chars of page edge
-    const TOTAL_PAGES = 50;           // Simulated document total: 50 * 1024 = 51,200 chars
-    const TOTAL_CHARS = TOTAL_PAGES * PAGE_SIZE;
+    const PREFETCH_THRESHOLD = 200;   // Trigger prefetch within 200 chars of page edge
 
     const DEFAULT_FONT_SIZE = 28;
     const MIN_FONT_SIZE = 12;
     const MAX_FONT_SIZE = 72;
     const FONT_FAMILY = "'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace";
 
-    // --- 2. FRONTEND STATE & PAGE CACHE ---
+    // --- 2. FRONTEND STATE ---
     const state = {
+      totalChars: 0,
       fontSize: DEFAULT_FONT_SIZE,
       charWidth: 0,
       scrollX: 0,
@@ -507,13 +557,13 @@
       dragStartScrollX: 0,
       hasDragged: false,
       dpr: window.devicePixelRatio || 1,
-      lastScrollDirection: 1, // 1 for right, -1 for left
-      lastScrollX: 0
+      lastScrollDirection: 1
     };
 
-    // In-memory page cache (Map: pageIndex -> 1024-char string)
+    // In-memory 5-page sliding cache (Map: pageIndex -> 1024-char string)
     const pageCache = new Map();
     const inFlightRequests = new Set();
+    let isInserting = false;
 
     // DOM Elements
     const editorWrapper = document.getElementById('editorWrapper');
@@ -543,61 +593,49 @@
     const statMaxScroll = document.getElementById('statMaxScroll');
     const statCharWidth = document.getElementById('statCharWidth');
     const statDpr = document.getElementById('statDpr');
+    const statDocumentInfo = document.getElementById('statDocumentInfo');
 
-    // --- 3. DETERMINISTIC BACKEND SIMULATION ---
-    // Generates an exact 1024-character payload for any page requested
-    function generateBackendPage(pageIdx) {
-      const header = `[PAGE #${pageIdx} | ${pageIdx * PAGE_SIZE}..${((pageIdx + 1) * PAGE_SIZE) - 1}] `;
-      const footer = ` [END P#${pageIdx}]`;
-      const fillerSeed = `The quick brown fox jumps over lazy dog ${pageIdx}. Hello world! Sentence ${pageIdx} with numbers 0123456789. Virtual memory buffer stream paging engine. `;
-      
-      let body = header;
-      while (body.length + footer.length < PAGE_SIZE) {
-        body += fillerSeed;
-      }
-      // Exact pad to 1024 chars
-      const paddingNeeded = PAGE_SIZE - (body.length + footer.length);
-      if (paddingNeeded > 0) {
-        body += ".".repeat(paddingNeeded);
-      }
-      return (body + footer).substring(0, PAGE_SIZE);
-    }
+    const inputInsertText = document.getElementById('inputInsertText');
+    const btnInsert = document.getElementById('btnInsert');
 
     function updateActivityLog(msg) {
       activityLog.textContent = msg;
     }
 
-    // --- 4. ASYNCHRONOUS API SIMULATION & EVICTION LOGIC ---
+    // --- 3. BACKEND READ: LOGICAL WINDOW SLICING ---
     async function apiFetchPage(pageIdx) {
-      if (pageIdx < 0 || pageIdx >= TOTAL_PAGES) return null;
+      const start = pageIdx * PAGE_SIZE;
+      if (start >= state.totalChars && state.totalChars > 0) return null;
       if (pageCache.has(pageIdx)) return pageCache.get(pageIdx);
       if (inFlightRequests.has(pageIdx)) return null;
 
       inFlightRequests.add(pageIdx);
-      updateActivityLog(`⚡ [API] Requesting Page #${pageIdx} from backend...`);
+      updateActivityLog(`⚡ [Backend API] Fetching Page #${pageIdx} slice [${start}..${start + PAGE_SIZE - 1}]...`);
 
-      // Simulate 120ms network latency
-      await new Promise(r => setTimeout(r, 120));
+      try {
+        const res = await fetch(`${BACKEND_URL}/slice?start=${start}&length=${PAGE_SIZE}`);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        const pageContent = data.content || "";
 
-      const pageContent = generateBackendPage(pageIdx);
-      pageCache.set(pageIdx, pageContent);
-      inFlightRequests.delete(pageIdx);
+        pageCache.set(pageIdx, pageContent);
+        inFlightRequests.delete(pageIdx);
 
-      // EVICTION: Keep at most MAX_PAGES_IN_MEMORY (5 pages)
-      enforceMaxPages(pageIdx);
-
-      updateMemoryDashboard();
-      render();
-      return pageContent;
+        enforceMaxPages(pageIdx);
+        updateMemoryDashboard();
+        render();
+        return pageContent;
+      } catch (err) {
+        inFlightRequests.delete(pageIdx);
+        updateActivityLog(`⚠️ [Backend Error]: ${err.message}`);
+        return null;
+      }
     }
 
     function enforceMaxPages(triggeringPage) {
       if (pageCache.size <= MAX_PAGES_IN_MEMORY) return;
 
-      // Find current active page in view
       const activePage = getActivePage();
-
-      // Find page with greatest distance from activePage
       let farthestPage = null;
       let maxDistance = -1;
 
@@ -607,7 +645,6 @@
           maxDistance = dist;
           farthestPage = pageIdx;
         } else if (dist === maxDistance) {
-          // If equidistant, prefer deleting page opposite to scroll direction
           if (state.lastScrollDirection > 0 && pageIdx < farthestPage) {
             farthestPage = pageIdx;
           } else if (state.lastScrollDirection < 0 && pageIdx > farthestPage) {
@@ -625,8 +662,8 @@
 
     function getActivePage() {
       const viewportCenter = state.scrollX + (editorWrapper.clientWidth / 2) - state.paddingLeft;
-      const centerChar = Math.max(0, Math.floor(viewportCenter / state.charWidth));
-      return Math.min(TOTAL_PAGES - 1, Math.floor(centerChar / PAGE_SIZE));
+      const centerChar = Math.max(0, Math.floor(viewportCenter / Math.max(1, state.charWidth)));
+      return Math.floor(centerChar / PAGE_SIZE);
     }
 
     function updateMemoryDashboard() {
@@ -644,18 +681,60 @@
       });
     }
 
-    // Access character in cache or schedule async fetch
     function getCharAtGlobalIndex(globalIdx) {
-      if (globalIdx < 0 || globalIdx >= TOTAL_CHARS) return null;
+      if (globalIdx < 0 || globalIdx >= state.totalChars) return null;
       const pageIdx = Math.floor(globalIdx / PAGE_SIZE);
       const offset = globalIdx % PAGE_SIZE;
 
       if (pageCache.has(pageIdx)) {
-        return pageCache.get(pageIdx)[offset];
+        return pageCache.get(pageIdx)[offset] || " ";
       } else {
-        // Automatically request page if not yet in cache
         apiFetchPage(pageIdx);
-        return "·"; // Placeholder while fetching
+        return "·"; // Loading placeholder
+      }
+    }
+
+    // --- 4. BACKEND ADD: AUTHORITATIVE INSERTION (NO OPTIMISTIC UI) ---
+    async function apiInsertText(position, text) {
+      if (!text || isInserting) return;
+      isInserting = true;
+      updateActivityLog(`⏳ [Server Sync] Inserting '${text.length > 20 ? text.substring(0,20)+'...' : text}' at #${position}. Waiting for authoritative ACK...`);
+
+      try {
+        const res = await fetch(`${BACKEND_URL}/insert`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position: position, text: text })
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+
+        // 1. Authoritative update from server (No local speculative divergence)
+        state.totalChars = data.newTotalLength;
+        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount}`;
+
+        // 2. Cache Invalidation: Pages from the insertion point onwards are shifted
+        const activePage = Math.floor(position / PAGE_SIZE);
+        for (const p of Array.from(pageCache.keys())) {
+          if (p >= activePage) {
+            pageCache.delete(p);
+          }
+        }
+
+        // 3. Re-fetch authoritative slice from backend
+        await apiFetchPage(activePage);
+
+        // 4. Advance selection cursor
+        state.selectedIndex = position + text.length;
+
+        updateActivityLog(`✅ [Backend Confirmed]: Inserted ${text.length} chars at #${position}. New Total: ${data.newTotalLength} (Pieces: ${data.piecesCount}).`);
+        clampScroll();
+        render();
+        updateInspector(state.selectedIndex);
+      } catch (err) {
+        updateActivityLog(`❌ [Insert Failed]: ${err.message}`);
+      } finally {
+        isInserting = false;
       }
     }
 
@@ -675,7 +754,7 @@
 
     function getMaxScroll() {
       const viewportWidth = editorWrapper.clientWidth;
-      const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+      const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
       return Math.max(0, totalWidth - viewportWidth);
     }
 
@@ -688,7 +767,6 @@
       updateScrollbar();
     }
 
-    // --- 6. CANVAS RESIZE & HI-DPI ---
     function resizeCanvases() {
       state.dpr = window.devicePixelRatio || 1;
       const rect = editorWrapper.getBoundingClientRect();
@@ -714,19 +792,18 @@
       render();
     }
 
-    // --- 7. PREFETCH THRESHOLD CHECK ---
+    // --- 6. PREFETCH TRIGGER ---
     function checkPrefetchTrigger(firstVisible, lastVisible) {
+      if (state.totalChars <= 0) return;
       const currentActive = getActivePage();
 
-      // Right boundary check
       const distToNextPage = ((currentActive + 1) * PAGE_SIZE) - lastVisible;
-      if (distToNextPage <= PREFETCH_THRESHOLD && currentActive + 1 < TOTAL_PAGES) {
+      if (distToNextPage <= PREFETCH_THRESHOLD && ((currentActive + 1) * PAGE_SIZE) < state.totalChars) {
         if (!pageCache.has(currentActive + 1) && !inFlightRequests.has(currentActive + 1)) {
           apiFetchPage(currentActive + 1);
         }
       }
 
-      // Left boundary check
       const distToPrevPage = firstVisible - (currentActive * PAGE_SIZE);
       if (distToPrevPage <= PREFETCH_THRESHOLD && currentActive - 1 >= 0) {
         if (!pageCache.has(currentActive - 1) && !inFlightRequests.has(currentActive - 1)) {
@@ -735,7 +812,7 @@
       }
     }
 
-    // --- 8. RENDER LOOP ---
+    // --- 7. RENDER ENGINE ---
     function render() {
       const viewportWidth = editorWrapper.clientWidth;
       const rulerHeight = 28;
@@ -749,10 +826,11 @@
       textCtx.fillStyle = "#070a12";
       textCtx.fillRect(0, 0, viewportWidth, textHeight);
 
-      const firstVisible = Math.max(0, Math.floor((state.scrollX - state.paddingLeft) / state.charWidth));
-      const lastVisible = Math.min(TOTAL_CHARS, Math.ceil((state.scrollX + viewportWidth - state.paddingLeft) / state.charWidth) + 1);
+      if (state.totalChars === 0) return;
 
-      // Ensure pages for visible range are requested
+      const firstVisible = Math.max(0, Math.floor((state.scrollX - state.paddingLeft) / state.charWidth));
+      const lastVisible = Math.min(state.totalChars, Math.ceil((state.scrollX + viewportWidth - state.paddingLeft) / state.charWidth) + 1);
+
       const startPage = Math.floor(firstVisible / PAGE_SIZE);
       const endPage = Math.floor(lastVisible / PAGE_SIZE);
       for (let p = startPage; p <= endPage; p++) {
@@ -761,27 +839,22 @@
         }
       }
 
-      // Prefetch adjacent page if near boundary
       checkPrefetchTrigger(firstVisible, lastVisible);
-
-      // Update active page chip
       updateMemoryDashboard();
 
-      // --- DRAW RULER & PAGE DIVIDERS ---
+      // --- RULER ---
       rulerCtx.font = `10px ${FONT_FAMILY}`;
       rulerCtx.textBaseline = "alphabetic";
 
-      // Regular character ticks
       const step = state.charWidth < 12 ? 20 : 10;
       const firstTick = Math.floor(firstVisible / step) * step;
 
       for (let i = firstTick; i <= lastVisible; i += step) {
-        if (i < 0 || i > TOTAL_CHARS) continue;
+        if (i < 0 || i > state.totalChars) continue;
         const x = state.paddingLeft + (i * state.charWidth) - state.scrollX;
         if (x >= -40 && x <= viewportWidth + 40) {
           const isPageBoundary = (i % PAGE_SIZE === 0);
           if (isPageBoundary) {
-            // Bright Page Divider
             const pageNum = i / PAGE_SIZE;
             rulerCtx.strokeStyle = "#a855f7";
             rulerCtx.lineWidth = 2;
@@ -795,7 +868,6 @@
             rulerCtx.fillText(`PAGE #${pageNum} [${i}]`, x + 4, rulerHeight - 6);
             rulerCtx.font = `10px ${FONT_FAMILY}`;
           } else {
-            // Standard tick
             rulerCtx.strokeStyle = "#2e3b52";
             rulerCtx.lineWidth = 1;
             rulerCtx.beginPath();
@@ -809,7 +881,7 @@
         }
       }
 
-      // --- DRAW CLICKED CHARACTER HIGHLIGHT ---
+      // --- SELECTION HIGHLIGHT ---
       if (state.selectedIndex !== null && state.selectedIndex >= firstVisible && state.selectedIndex < lastVisible) {
         const selX = state.paddingLeft + (state.selectedIndex * state.charWidth) - state.scrollX;
         textCtx.fillStyle = "rgba(244, 63, 94, 0.28)";
@@ -820,16 +892,15 @@
         textCtx.strokeRect(selX, 8, state.charWidth, textHeight - 16);
       }
 
-      // --- DRAW TEXT GLYPHS ---
+      // --- TEXT GLYPHS ---
       textCtx.font = `${state.fontSize}px ${FONT_FAMILY}`;
       textCtx.textBaseline = "middle";
       const textY = textHeight / 2;
 
       for (let i = firstVisible; i < lastVisible; i++) {
-        if (i >= TOTAL_CHARS) break;
+        if (i >= state.totalChars) break;
         const x = state.paddingLeft + (i * state.charWidth) - state.scrollX;
-        
-        // Page boundary visual separator on text canvas
+
         if (i > 0 && i % PAGE_SIZE === 0) {
           textCtx.strokeStyle = "rgba(168, 85, 247, 0.4)";
           textCtx.lineWidth = 1.5;
@@ -845,9 +916,7 @@
           textCtx.fillStyle = "#ffffff";
           textCtx.font = `bold ${state.fontSize}px ${FONT_FAMILY}`;
         } else if (char === "·") {
-          textCtx.fillStyle = "#64748b"; // Loading placeholder
-        } else if (char === "[" || char === "]") {
-          textCtx.fillStyle = "#c084fc"; // Page tag accent
+          textCtx.fillStyle = "#64748b";
         } else if (char === " ") {
           textCtx.fillStyle = "#334155";
         } else {
@@ -858,17 +927,17 @@
         textCtx.fillText(char || " ", x, textY);
       }
 
-      // Left/Right Padding Visual indicators
+      // Left/Right Padding indicator
       if (state.scrollX < state.paddingLeft) {
         textCtx.fillStyle = "rgba(239, 68, 68, 0.08)";
         textCtx.fillRect(0, 0, state.paddingLeft - state.scrollX, textHeight);
       }
     }
 
-    // --- 9. SCROLLBAR INTERFACE ---
+    // --- 8. SCROLLBAR INTERFACE ---
     function updateScrollbar() {
       const trackWidth = scrollbarTrack.clientWidth;
-      const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+      const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
       const viewportWidth = editorWrapper.clientWidth;
       const maxScroll = getMaxScroll();
 
@@ -888,13 +957,13 @@
       scrollbarThumb.style.transform = `translateX(${thumbLeft}px)`;
     }
 
-    // --- 10. HIT-TESTING & TRIPLET INSPECTOR ---
+    // --- 9. HIT-TESTING & INSPECTOR ---
     function getIndexFromClientX(clientX) {
       const rect = textCanvas.getBoundingClientRect();
       const clickXInCanvas = clientX - rect.left;
       const absoluteX = clickXInCanvas + state.scrollX - state.paddingLeft;
       const rawIndex = Math.floor(absoluteX / state.charWidth);
-      return Math.max(0, Math.min(TOTAL_CHARS - 1, rawIndex));
+      return Math.max(0, Math.min(state.totalChars - 1, rawIndex));
     }
 
     function formatGlyph(char) {
@@ -912,28 +981,29 @@
     function updateInspector(index) {
       state.selectedIndex = index;
       const pageIndex = Math.floor(index / PAGE_SIZE);
-      inspectStatus.textContent = `Character #${index} Selected (Page #${pageIndex})`;
+      inspectStatus.textContent = `Cursor at #${index} (Page #${pageIndex})`;
+      btnInsert.textContent = `+ Insert at Cursor (Index #${index})`;
 
-      // 1. Character Before (index - 1)
+      // 1. Character Before
       if (index > 0) {
         const prevChar = getCharAtGlobalIndex(index - 1);
         glyphBefore.innerHTML = formatGlyph(prevChar);
-        indexBefore.textContent = `Index: #${index - 1} (P#${Math.floor((index - 1) / PAGE_SIZE)})`;
+        indexBefore.textContent = `Index: #${index - 1}`;
       } else {
         glyphBefore.innerHTML = `<span class="special-glyph">[START]</span>`;
         indexBefore.textContent = `No predecessor`;
       }
 
-      // 2. Clicked Character (index)
+      // 2. Clicked Character
       const curChar = getCharAtGlobalIndex(index);
       glyphCurrent.innerHTML = formatGlyph(curChar);
-      indexCurrent.textContent = `Index: #${index} (P#${pageIndex})`;
+      indexCurrent.textContent = `Index: #${index} (Page #${pageIndex})`;
 
-      // 3. Character After (index + 1)
-      if (index < TOTAL_CHARS - 1) {
+      // 3. Character After
+      if (index < state.totalChars - 1) {
         const nextChar = getCharAtGlobalIndex(index + 1);
         glyphAfter.innerHTML = formatGlyph(nextChar);
-        indexAfter.textContent = `Index: #${index + 1} (P#${Math.floor((index + 1) / PAGE_SIZE)})`;
+        indexAfter.textContent = `Index: #${index + 1}`;
       } else {
         glyphAfter.innerHTML = `<span class="special-glyph">[END]</span>`;
         indexAfter.textContent = `No successor`;
@@ -942,7 +1012,7 @@
       render();
     }
 
-    // --- 11. ZOOM SCALING ---
+    // --- 10. ZOOM & CONTROLS ---
     function changeFontSize(delta) {
       const oldFontSize = state.fontSize;
       const newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, oldFontSize + delta));
@@ -966,7 +1036,7 @@
       render();
     }
 
-    // --- 12. MOUSE DRAGGING & WHEEL INTERACTION ---
+    // --- 11. MOUSE & DRAG INTERACTION ---
     textCanvas.addEventListener('mousedown', (e) => {
       editorWrapper.focus();
       if (e.button === 0) {
@@ -1003,7 +1073,6 @@
       }
     });
 
-    // Trackpad / Wheel Scroll
     editorWrapper.addEventListener('wheel', (e) => {
       e.preventDefault();
       const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
@@ -1013,7 +1082,7 @@
       render();
     }, { passive: false });
 
-    // --- 13. KEYBOARD SHORTCUTS ---
+    // --- 12. KEYBOARD INTERACTION (ZOOM + DIRECT CANVAS INSERTION) ---
     window.addEventListener('keydown', (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
@@ -1033,36 +1102,43 @@
         return;
       }
 
-      if (document.activeElement === editorWrapper || document.activeElement === document.body) {
+      // If editor wrapper is focused, handle typing & arrows
+      if (document.activeElement === editorWrapper) {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
-          state.lastScrollDirection = -1;
           state.scrollX -= state.charWidth * 5;
           clampScroll();
           render();
+          return;
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
-          state.lastScrollDirection = 1;
           state.scrollX += state.charWidth * 5;
           clampScroll();
           render();
+          return;
         } else if (e.key === 'Home') {
           e.preventDefault();
-          state.lastScrollDirection = -1;
           state.scrollX = 0;
           clampScroll();
           render();
+          return;
         } else if (e.key === 'End') {
           e.preventDefault();
-          state.lastScrollDirection = 1;
           state.scrollX = getMaxScroll();
           clampScroll();
           render();
+          return;
+        }
+
+        // Direct Keyboard Character Addition (Printable keys only)
+        if (!isCtrlOrCmd && !e.altKey && e.key.length === 1 && state.selectedIndex !== null) {
+          e.preventDefault();
+          apiInsertText(state.selectedIndex, e.key);
         }
       }
     });
 
-    // --- 14. SCROLLBAR DRAG & TRACK CLICK ---
+    // --- 13. SCROLLBAR DRAG & CLICK ---
     let isScrollbarDragging = false;
     let scrollbarDragStartX = 0;
     let scrollbarDragStartScrollX = 0;
@@ -1079,7 +1155,7 @@
     window.addEventListener('mousemove', (e) => {
       if (isScrollbarDragging) {
         const trackWidth = scrollbarTrack.clientWidth;
-        const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+        const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
         const viewportWidth = editorWrapper.clientWidth;
         const ratio = viewportWidth / totalWidth;
         const thumbWidth = Math.max(36, trackWidth * ratio);
@@ -1111,7 +1187,7 @@
       const rect = scrollbarTrack.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const trackWidth = rect.width;
-      const totalWidth = state.paddingLeft + (TOTAL_CHARS * state.charWidth) + state.paddingRight;
+      const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
       const viewportWidth = editorWrapper.clientWidth;
       const ratio = viewportWidth / totalWidth;
       const thumbWidth = Math.max(36, trackWidth * ratio);
@@ -1129,10 +1205,18 @@
       }
     });
 
-    // --- 15. BUTTON CONTROLS & PAGE SWITCHING ---
+    // --- 14. BUTTON CONTROLS ---
+    btnInsert.addEventListener('click', () => {
+      const textToInsert = inputInsertText.value;
+      if (textToInsert && state.selectedIndex !== null) {
+        apiInsertText(state.selectedIndex, textToInsert);
+      }
+    });
+
     function scrollToPage(pageIdx) {
       if (pageIdx < 0) pageIdx = 0;
-      if (pageIdx >= TOTAL_PAGES) pageIdx = TOTAL_PAGES - 1;
+      const maxPage = Math.floor(state.totalChars / PAGE_SIZE);
+      if (pageIdx > maxPage) pageIdx = maxPage;
 
       const targetChar = pageIdx * PAGE_SIZE;
       state.lastScrollDirection = (targetChar * state.charWidth) >= state.scrollX ? 1 : -1;
@@ -1143,7 +1227,7 @@
     }
 
     document.getElementById('btnStart').addEventListener('click', () => scrollToPage(0));
-    document.getElementById('btnEnd').addEventListener('click', () => scrollToPage(TOTAL_PAGES - 1));
+    document.getElementById('btnEnd').addEventListener('click', () => scrollToPage(Math.floor(state.totalChars / PAGE_SIZE)));
 
     document.getElementById('btnPrevPage').addEventListener('click', () => {
       const active = getActivePage();
@@ -1152,7 +1236,7 @@
 
     document.getElementById('btnNextPage').addEventListener('click', () => {
       const active = getActivePage();
-      scrollToPage(Math.min(TOTAL_PAGES - 1, active + 1));
+      scrollToPage(active + 1);
     });
 
     document.getElementById('btnJumpPage').addEventListener('click', () => {
@@ -1166,14 +1250,42 @@
 
     window.addEventListener('resize', resizeCanvases);
 
-    // --- 16. BOOTSTRAP ---
+    // --- 15. INITIALIZATION ---
     async function init() {
       measureCharWidth();
       resizeCanvases();
 
-      // Initial page fetch
-      await apiFetchPage(0);
-      updateInspector(0);
+      try {
+        const res = await fetch(`${BACKEND_URL}/text`);
+        const data = await res.json();
+
+        if (!data || data.totalLength === 0) {
+          // Initialize with 20 pages (20,480 characters) of seed text
+          const seed = "The quick brown fox jumps over the lazy dog. 0123456789 - Piece Table Spring Boot Backend Engine. Subpixel monospace layout with authoritative server paging! ";
+          let bigInitial = "";
+          while (bigInitial.length < 20480) {
+            bigInitial += seed;
+          }
+          bigInitial = bigInitial.substring(0, 20480);
+
+          const initRes = await fetch(`${BACKEND_URL}/init`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: bigInitial })
+          });
+          const initData = await initRes.json();
+          state.totalChars = initData.totalLength;
+        } else {
+          state.totalChars = data.totalLength;
+        }
+
+        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount || 1}`;
+        await apiFetchPage(0);
+        updateInspector(0);
+        updateActivityLog(`[Connected]: Backend ready on http://localhost:8081. Document: ${state.totalChars.toLocaleString()} characters.`);
+      } catch (err) {
+        updateActivityLog(`⚠️ [Connection Failed]: Ensure Spring Boot is running on port 8081 (${err.message}).`);
+      }
     }
 
     init();

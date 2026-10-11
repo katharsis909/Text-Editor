@@ -88,6 +88,42 @@ public class PieceTableService {
     }
 
     /**
+     * Extracts a logical substring slice [start, start + length)
+     * by traversing only the relevant pieces without allocating the entire document.
+     */
+    public synchronized String getSlice(int start, int length) {
+        int total = getTotalLength();
+        start = Math.max(0, Math.min(total, start));
+        length = Math.max(0, Math.min(total - start, length));
+        if (length == 0 || pieceDirectory.isEmpty()) {
+            return "";
+        }
+
+        int end = start + length;
+        StringBuilder result = new StringBuilder(length);
+        int[] offsets = computeCumulativeOffsets();
+        int startPieceIdx = binarySearchPieceIndex(offsets, start);
+
+        for (int i = startPieceIdx; i < pieceDirectory.size(); i++) {
+            int pStart = offsets[i];
+            Piece p = pieceDirectory.get(i);
+            int pEnd = pStart + p.getLength();
+
+            if (pEnd > start && pStart < end) {
+                int overlapStart = Math.max(0, start - pStart);
+                int overlapEnd = Math.min(p.getLength(), end - pStart);
+                StringBuilder buf = (p.getBuffer() == BufferType.ORIGINAL) ? originalBuffer : addBuffer;
+                result.append(buf.substring(p.getStart() + overlapStart, p.getStart() + overlapEnd));
+            }
+
+            if (pStart >= end) {
+                break;
+            }
+        }
+        return result.toString();
+    }
+
+    /**
      * Compute cumulative offsets array for binary search.
      * offsets[i] is the starting global character index of pieceDirectory[i].
      */

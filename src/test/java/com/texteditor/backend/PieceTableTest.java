@@ -69,6 +69,22 @@ public class PieceTableTest {
     }
 
     @Test
+    @DisplayName("2B. Logical slice extraction across fragmented pieces")
+    void testGetSlice() {
+        service.initialize("0123456789");
+        service.insert(5, "ABCDE"); // "01234ABCDE56789"
+        assertEquals("01234ABCDE56789", service.getText());
+
+        // Extract slice spanning both pieces
+        String slice = service.getSlice(3, 6); // from index 3 for 6 chars: "34" + "ABCD" = "34ABCD"
+        assertEquals("34ABCD", slice);
+
+        // Extract slice at boundary
+        assertEquals("012", service.getSlice(0, 3));
+        assertEquals("789", service.getSlice(12, 3));
+    }
+
+    @Test
     @DisplayName("3A. Deleting a part of a single piece in the middle")
     void testDeletePartOfPiece() {
         service.initialize("ABCDEFGHIJ"); // 10 chars
