@@ -40,20 +40,40 @@ public class PieceTableService {
     @jakarta.annotation.PostConstruct
     public void initDefaultDocument() {
         if (pieceDirectory.isEmpty()) {
-            StringBuilder sb = new StringBuilder(102400);
-            for (int p = 0; p < 100; p++) {
-                String header = String.format("[PAGE #%03d | %06d..%06d] ", p, p * 1024, (p + 1) * 1024 - 1);
-                String footer = String.format(" [END P#%03d]", p);
-                String filler = "The quick brown fox jumps over the lazy dog. Monospace Piece Table Spring Boot Engine. 0123456789. ";
-                StringBuilder page = new StringBuilder(header);
-                while (page.length() + footer.length() < 1024) {
-                    page.append(filler);
+            StringBuilder sb = new StringBuilder(100000);
+            String[] samples = new String[] {
+                "// Welcome to Antigravity Piece Table Multi-Line Text Editor\n" +
+                "// Built with Spring Boot backend + Monospace Virtual Line Rendering\n" +
+                "public class HighPerformancePieceTable {\n" +
+                "    private final List<Piece> pieceDirectory = new ArrayList<>();\n" +
+                "    private final StringBuilder originalBuffer;\n" +
+                "    private final StringBuilder addBuffer;\n" +
+                "\n" +
+                "    public void editMultiLineDocument() {\n" +
+                "        System.out.println(\"Seamless multi-line editing with line numbers and word navigation\");\n" +
+                "    }\n" +
+                "}\n\n",
+
+                "### Chapter 1: The Monospace Canvas Engine\n" +
+                "The editor renders multiple lines of text with subpixel monospace typography.\n" +
+                "Each line is identified by its line index (1-based) shown in the left gutter.\n" +
+                "You can navigate freely using Up, Down, Left, and Right arrow keys.\n" +
+                "Press Enter to insert a new line anywhere in the middle!\n" +
+                "Select text across multiple lines using mouse drag or Shift + Arrow keys.\n\n",
+
+                "### Technical Specifications\n" +
+                "- Invariant 1: Original buffer is strictly immutable.\n" +
+                "- Invariant 2: Add buffer is append-only for every keystroke.\n" +
+                "- Invariant 3: Line breaks (\\n) are first-class characters in the Piece Table.\n" +
+                "- Invariant 4: Zero text reallocation on delete, undo, or redo operations.\n\n"
+            };
+
+            int section = 1;
+            while (sb.length() < 100000) {
+                sb.append("--- SECTION #").append(section++).append(" ---\n");
+                for (String s : samples) {
+                    sb.append(s);
                 }
-                while (page.length() + footer.length() < 1024) {
-                    page.append(".");
-                }
-                page.append(footer);
-                sb.append(page.substring(0, 1024));
             }
             initialize(sb.toString());
         }

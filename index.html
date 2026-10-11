@@ -3,20 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Text Editor - Piece Table Spring Boot (Selection, Edge Auto-Scroll &amp; Delete)</title>
+  <title>Antigravity Multi-Line Text Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <style>
     :root {
-      --bg: #0b0f19;
-      --panel: #161e2e;
-      --border: #2e3b52;
-      --text: #f1f5f9;
-      --muted: #8899b0;
-      --accent: #38bdf8;
-      --accent-glow: rgba(56, 189, 248, 0.25);
-      --highlight: #f43f5e;
-      --success: #10b981;
-      --page-marker: #a855f7;
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --gutter-bg: #0d1117;
+      --gutter-border: #30363d;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --accent-hover: #1f6feb;
+      --selection: rgba(56, 139, 253, 0.28);
+      --cursor: #58a6ff;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
       --font-mono: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+      --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
     * {
@@ -26,608 +32,428 @@
     }
 
     body {
-      background: var(--bg);
+      background-color: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      min-height: 100vh;
+      font-family: var(--font-ui);
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 24px 20px;
-      gap: 16px;
-    }
-
-    .container {
-      width: 100%;
-      max-width: 1100px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 12px;
-    }
-
-    h1 {
-      font-size: 19px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .badge {
-      font-size: 11px;
-      padding: 3px 8px;
-      border-radius: 4px;
-      background: rgba(56, 189, 248, 0.15);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      color: var(--accent);
-      font-family: var(--font-mono);
-    }
-
-    .badge-backend {
-      font-size: 11px;
-      padding: 3px 8px;
-      border-radius: 4px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      color: var(--success);
-      font-family: var(--font-mono);
-    }
-
-    /* Page Memory & Cache Dashboard */
-    .memory-dashboard {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .memory-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .page-chips-container {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .page-chip {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      padding: 4px 8px;
-      border-radius: 5px;
-      border: 1px solid var(--border);
-      background: #0d1424;
-      color: var(--muted);
-      transition: all 0.2s ease;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .page-chip.active {
-      background: rgba(56, 189, 248, 0.2);
-      border-color: var(--accent);
-      color: #ffffff;
-      font-weight: 700;
-      box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
-    }
-
-    .page-chip.cached {
-      border-color: #3b82f6;
-      color: #93c5fd;
-    }
-
-    .log-strip {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: #10b981;
-      background: #070a12;
-      border: 1px solid #1e293b;
-      padding: 6px 10px;
-      border-radius: 5px;
-      white-space: nowrap;
+      height: 100vh;
       overflow: hidden;
-      text-overflow: ellipsis;
+      user-select: none;
     }
 
-    /* Live Inspector Panel */
-    .inspector-panel {
-      background: var(--panel);
-      border: 2px solid var(--border);
-      border-radius: 10px;
-      padding: 16px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    }
-
-    .inspector-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--muted);
+    /* HEADER APP BAR */
+    header {
+      background: var(--card-bg);
       border-bottom: 1px solid var(--border);
-      padding-bottom: 8px;
-    }
-
-    .triplet-container {
-      display: grid;
-      grid-template-columns: 1fr 1.2fr 1fr;
-      gap: 14px;
-      align-items: stretch;
-    }
-
-    .char-card {
-      background: #0d1424;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
+      height: 48px;
+      padding: 0 16px;
       display: flex;
-      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 5px;
-      text-align: center;
+      justify-content: space-between;
+      flex-shrink: 0;
     }
 
-    .char-card.clicked {
-      background: #1e1b2e;
-      border-color: var(--highlight);
-      box-shadow: 0 0 16px rgba(244, 63, 94, 0.3);
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: -0.2px;
     }
 
-    .char-card-label {
+    .brand-badge {
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--accent);
+      padding: 2px 7px;
+      border-radius: 12px;
       font-size: 11px;
       font-weight: 600;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .char-card.clicked .char-card-label {
-      color: var(--highlight);
-    }
-
-    .char-card-glyph {
       font-family: var(--font-mono);
-      font-size: 32px;
-      font-weight: 700;
-      min-height: 42px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--text);
     }
 
-    .char-card.clicked .char-card-glyph {
-      color: #fda4af;
-    }
-
-    .char-card-index {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--accent);
-    }
-
-    .special-glyph {
-      font-size: 12px;
-      color: var(--muted);
-      font-style: italic;
-    }
-
-    /* Insertion & Controls Bar */
-    .controls-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 12px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 13px;
-    }
-
-    .control-group {
+    .top-actions {
       display: flex;
       align-items: center;
       gap: 8px;
     }
 
-    input[type="text"] {
-      background: #090e1a;
+    .btn {
+      background: #21262d;
       border: 1px solid var(--border);
-      color: #fff;
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      outline: none;
-    }
-
-    input[type="text"]:focus {
-      border-color: var(--accent);
-    }
-
-    button {
-      background: #243046;
       color: var(--text);
-      border: 1px solid var(--border);
-      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 12px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
-      font-family: inherit;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    button:hover {
-      background: #334466;
-      border-color: var(--accent);
-    }
-
-    button.btn-add {
-      background: #1e3a5f;
-      border-color: var(--accent);
-      color: #e0f2fe;
-      font-weight: 600;
-    }
-
-    button.btn-add:hover {
-      background: #0284c7;
-      color: #ffffff;
-    }
-
-    button.btn-delete {
-      background: #451a24;
-      border-color: #f43f5e;
-      color: #fda4af;
-      font-weight: 600;
+      gap: 5px;
       transition: all 0.15s ease;
+      font-family: var(--font-ui);
     }
 
-    button.btn-delete:hover:not(:disabled) {
-      background: #e11d48;
-      color: #ffffff;
-      border-color: #f43f5e;
+    .btn:hover:not(:disabled) {
+      background: #30363d;
+      border-color: #8b949e;
     }
 
-    button.btn-delete:disabled {
-      opacity: 0.35;
+    .btn:active:not(:disabled) {
+      background: #282e33;
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
       cursor: not-allowed;
-      border-color: #475569;
-      color: #94a3b8;
     }
 
-    /* Editor Viewport & Frame */
-    .editor-frame {
-      display: flex;
-      flex-direction: column;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    .btn-primary {
+      background: #238636;
+      border-color: rgba(240, 246, 252, 0.1);
+      color: #fff;
     }
 
-    .editor-wrapper {
-      position: relative;
-      background: #070a12;
-      border: 2px solid var(--border);
-      border-bottom: 1px solid #1a263c;
-      border-radius: 8px 8px 0 0;
-      overflow: hidden;
-      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.6);
-      cursor: text;
-      user-select: none;
+    .btn-primary:hover:not(:disabled) {
+      background: #2ea043;
+      border-color: rgba(240, 246, 252, 0.1);
     }
 
-    .editor-wrapper:focus {
-      outline: none;
-      border-color: var(--accent);
+    .btn-danger {
+      background: rgba(248, 81, 73, 0.15);
+      border-color: rgba(248, 81, 73, 0.4);
+      color: #f85149;
     }
 
-    .ruler-canvas {
-      display: block;
-      width: 100%;
-      height: 28px;
-      background: #0d1322;
-      border-bottom: 1px solid var(--border);
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(248, 81, 73, 0.3);
     }
 
-    .text-canvas {
-      display: block;
-      width: 100%;
-      height: 85px;
-      cursor: text;
+    .dev-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
     }
 
-    /* Scrollbar */
-    .scrollbar-container {
-      width: 100%;
-      height: 20px;
-      background: #090e1a;
-      border: 2px solid var(--border);
-      border-top: none;
-      border-radius: 0 0 8px 8px;
-      position: relative;
-      cursor: pointer;
-      overflow: hidden;
-      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
-    }
-
-    .scrollbar-thumb {
-      position: absolute;
-      top: 2px;
-      height: 14px;
-      background: #27354f;
-      border: 1px solid #3b4d6e;
-      border-radius: 7px;
-      cursor: grab;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .scrollbar-thumb:hover {
-      background: #384b6f;
-      border-color: var(--accent);
-    }
-
-    .scrollbar-thumb.dragging {
-      cursor: grabbing !important;
-      background: var(--accent);
-      border-color: #7dd3fc;
-    }
-
-    .thumb-grip {
-      width: 14px;
-      height: 4px;
-      border-top: 1.5px solid rgba(255, 255, 255, 0.5);
-      border-bottom: 1.5px solid rgba(255, 255, 255, 0.5);
-    }
-
-    /* Status Bar */
-    .status-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: var(--muted);
-      font-family: var(--font-mono);
-      padding: 4px 6px;
-    }
-
-    .shortcut-hint {
+    .dev-link:hover {
       color: var(--accent);
-      background: rgba(56, 189, 248, 0.1);
-      padding: 1px 5px;
-      border-radius: 3px;
+      background: rgba(88, 166, 255, 0.1);
+    }
+
+    /* TOOLBAR */
+    .toolbar {
+      background: #12161f;
+      border-bottom: 1px solid var(--border);
+      height: 40px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .toolbar-sep {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .zoom-val {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      min-width: 38px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    /* MAIN EDITOR AREA */
+    .editor-container {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+      background: var(--bg);
+      outline: none;
+    }
+
+    /* LINE NUMBERS GUTTER CANVAS */
+    #gutterCanvas {
+      background: var(--gutter-bg);
+      border-right: 1px solid var(--gutter-border);
+      flex-shrink: 0;
+      display: block;
+    }
+
+    /* TEXT CONTENT CANVAS */
+    #textCanvas {
+      flex: 1;
+      background: var(--bg);
+      display: block;
+      cursor: text;
+    }
+
+    /* SCROLLBARS */
+    .v-scrollbar {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 10px;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.02);
+      z-index: 10;
+    }
+
+    .v-thumb {
+      position: absolute;
+      top: 0;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .v-thumb:hover, .v-thumb.dragging {
+      background: rgba(255, 255, 255, 0.35);
+    }
+
+    /* STATUS FOOTER */
+    footer {
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      height: 28px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+
+    .status-items {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-highlight {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .toast {
+      color: var(--text);
+      transition: opacity 0.3s ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 450px;
     }
   </style>
 </head>
 <body>
 
-  <div class="container">
-    <header>
-      <h1>
-        Spring Boot Piece Table Editor
-        <span class="badge-backend">Backend: http://localhost:8081</span>
-        <span class="badge">1024 Chars / Page &bull; 1 Lakh Chars</span>
-      </h1>
-      <div style="font-size: 12px; color: var(--muted);">
-        Drag to select &bull; Edge drag auto-scrolls &bull; <span class="shortcut-hint">Backspace</span> deletes &bull; <span class="shortcut-hint">Shift+Arrows</span>
-      </div>
-    </header>
-
-    <!-- PAGE MEMORY & EVICTION MONITOR -->
-    <div class="memory-dashboard">
-      <div class="memory-row">
-        <div style="font-size: 12px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 8px;">
-          <span>PAGES IN FRONTEND RAM (MAX 5):</span>
-          <div class="page-chips-container" id="pageChipsContainer">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-        <div style="font-size: 12px; color: var(--accent); font-family: var(--font-mono);">
-          Active: <strong id="lblActivePage">Page #0</strong> | Edge-scroll: Dynamic auto-scroll
-        </div>
-      </div>
-      <div class="log-strip" id="activityLog">
-        Connecting to Spring Boot backend at http://localhost:8081...
-      </div>
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+      <span>Text Editor</span>
+      <span class="brand-badge">Piece Table Multi-Line</span>
     </div>
 
-    <!-- LIVE INSPECTOR: CHAR BEFORE, CLICKED CHAR, CHAR AFTER -->
-    <div class="inspector-panel">
-      <div class="inspector-header">
-        <span>Cursor &amp; Selection Inspector (Authoritative Server View)</span>
-        <span id="inspectStatus">Click or drag to select text</span>
-      </div>
+    <div class="top-actions">
+      <button id="btnUndo" class="btn" title="Undo (Ctrl/Cmd+Z)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>
+        Undo
+      </button>
+      <button id="btnRedo" class="btn" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"></path></svg>
+        Redo
+      </button>
 
-      <div class="triplet-container">
-        <!-- Character Before -->
-        <div class="char-card" id="cardBefore">
-          <div class="char-card-label">1. Character Before</div>
-          <div class="char-card-glyph" id="glyphBefore">-</div>
-          <div class="char-card-index" id="indexBefore">Index: -</div>
-        </div>
+      <button id="btnDelete" class="btn btn-danger" disabled title="Delete selection (Backspace/Delete)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        Delete
+      </button>
 
-        <!-- Clicked Character / Range -->
-        <div class="char-card clicked" id="cardCurrent">
-          <div class="char-card-label" id="cardCurrentLabel">2. Cursor Position</div>
-          <div class="char-card-glyph" id="glyphCurrent">-</div>
-          <div class="char-card-index" id="indexCurrent">Index: -</div>
-        </div>
+      <div class="toolbar-sep"></div>
 
-        <!-- Character After -->
-        <div class="char-card" id="cardAfter">
-          <div class="char-card-label">3. Character After</div>
-          <div class="char-card-glyph" id="glyphAfter">-</div>
-          <div class="char-card-index" id="indexAfter">Index: -</div>
-        </div>
-      </div>
+      <a href="dev.html" class="dev-link" target="_blank" title="Open low-level Piece Directory & Memory Inspector">
+        Inspect Piece Table &rarr;
+      </a>
+    </div>
+  </header>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <button id="btnZoomOut" class="btn" style="padding: 2px 7px;">-</button>
+      <span id="lblZoom" class="zoom-val">16px</span>
+      <button id="btnZoomIn" class="btn" style="padding: 2px 7px;">+</button>
     </div>
 
-    <!-- ADD & DELETE CONTROLS BAR -->
-    <div class="controls-bar" style="border-color: #1e3a5f; background: #0c1424;">
-      <div class="control-group" style="flex: 1;">
-        <span style="font-weight: 600; color: var(--accent);">Edit:</span>
-        <input type="text" id="inputInsertText" placeholder="Enter text to insert in middle..." style="flex: 1; max-width: 260px;" value=" >>> [INSERTION] <<< ">
-        <button id="btnInsert" class="btn-add">&plus; Insert</button>
-        <button id="btnDeleteSelection" class="btn-delete" disabled>&times; Delete (0 chars)</button>
-        <button id="btnUndo" style="background: #1e293b; border: 1px solid var(--border); color: #e2e8f0; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer;">↶ Undo</button>
-        <button id="btnRedo" style="background: #1e293b; border: 1px solid var(--border); color: #e2e8f0; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer;">↷ Redo</button>
-      </div>
-      <div class="control-group">
-        <span style="font-size: 11px; color: var(--muted);">
-          <b>Shortcuts:</b> Ctrl/Cmd+Z (Undo) &bull; Ctrl/Cmd+Shift+Z or Ctrl+Y (Redo) &bull; Shift+Arrow (Select)
-        </span>
-      </div>
-    </div>
+    <div class="toolbar-sep"></div>
 
-    <!-- NAVIGATION CONTROLS -->
-    <div class="controls-bar">
-      <div class="control-group">
-        <button id="btnPrevPage">&larr; Prev Page</button>
-        <button id="btnNextPage">Next Page &rarr;</button>
-        <button id="btnStart">Start (0)</button>
-        <button id="btnEnd">End</button>
-      </div>
-
-      <div class="control-group">
-        <span>Font Size:</span>
-        <button id="btnZoomOut">-</button>
-        <span id="fontSizeDisplay" style="font-family: var(--font-mono); font-weight: 700; color: var(--accent); min-width: 45px; text-align: center; font-size: 13px;">28px</span>
-        <button id="btnZoomIn">+</button>
-        <button id="btnZoomReset">Reset</button>
-      </div>
-
-      <div class="control-group">
-        <span style="color: var(--muted); font-size: 12px;">Jump to Page:</span>
-        <input type="number" id="jumpPageInput" value="0" min="0" max="99" style="background: #090e1a; border: 1px solid var(--border); color: #fff; padding: 4px 6px; border-radius: 4px; width: 60px; font-family: var(--font-mono);">
-        <button id="btnJumpPage">Go</button>
-      </div>
-    </div>
-
-    <!-- MAIN EDITOR CANVAS VIEWPORT & SCROLLBAR -->
-    <div class="editor-frame">
-      <div class="editor-wrapper" id="editorWrapper" tabindex="0">
-        <canvas class="ruler-canvas" id="rulerCanvas"></canvas>
-        <canvas class="text-canvas" id="textCanvas"></canvas>
-      </div>
-      <div class="scrollbar-container" id="scrollbarTrack">
-        <div class="scrollbar-thumb" id="scrollbarThumb">
-          <span class="thumb-grip"></span>
-        </div>
-      </div>
-    </div>
-
-    <!-- STATUS BAR -->
-    <div class="status-bar">
-      <div>Scroll: <span id="statScroll">0 px</span> / <span id="statMaxScroll">0 px</span></div>
-      <div>Char Width: <span id="statCharWidth">0.0000 px</span> | DPR: <span id="statDpr">1.0</span></div>
-      <div id="statDocumentInfo">Document: 102,400 chars | Pieces: 1</div>
+    <div class="toolbar-group" style="color: var(--text-muted);">
+      <span>Shortcuts:</span>
+      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Arrows (Navigate)</span> &bull;
+      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Enter (New Line)</span> &bull;
+      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Shift+Arrows (Select)</span> &bull;
+      <span style="color:var(--text); font-family:var(--font-mono); font-size:11px;">Ctrl+Home/End (Jump)</span>
     </div>
   </div>
 
-  <script>
-    // --- 1. CONSTANTS & BACKEND CONFIGURATION ---
-    const BACKEND_URL = "http://localhost:8081/api/piecetable";
-    const PAGE_SIZE = 1024;           // Logical view chunk size
-    const MAX_PAGES_IN_MEMORY = 5;    // Max pages cached in frontend RAM
-    const PREFETCH_THRESHOLD = 200;   // Trigger prefetch within 200 chars of page edge
-    const EDGE_SCROLL_MARGIN = 65;    // Pixels from left/right canvas edge triggering auto-scroll
+  <!-- EDITOR CANVAS VIEWPORT -->
+  <div class="editor-container" id="editorContainer" tabindex="0">
+    <canvas id="gutterCanvas" width="60"></canvas>
+    <canvas id="textCanvas"></canvas>
 
-    const DEFAULT_FONT_SIZE = 28;     // Comfortable readable font size
-    const MIN_FONT_SIZE = 14;
-    const MAX_FONT_SIZE = 80;
+    <div class="v-scrollbar" id="vScrollbar">
+      <div class="v-thumb" id="vThumb"></div>
+    </div>
+  </div>
+
+  <!-- STATUS FOOTER -->
+  <footer>
+    <div class="status-items">
+      <div id="statCursor">Ln 1, Col 1 (Pos #0)</div>
+      <div id="statSelection" style="display:none;" class="status-highlight">0 selected</div>
+      <div id="statDoc">Lines: 1 | Chars: 0</div>
+    </div>
+    <div class="toast" id="toastMsg">Ready</div>
+  </footer>
+
+  <script>
+    const BACKEND_URL = "http://localhost:8081/api/piecetable";
     const FONT_FAMILY = "'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace";
 
-    // --- 2. FRONTEND STATE ---
+    // Application State
     const state = {
-      totalChars: 102400,
-      fontSize: DEFAULT_FONT_SIZE,
-      charWidth: 0,
+      fullText: "",
+      lines: [""],
+      lineStartOffsets: [0],
+      totalChars: 0,
+
+      // Font & Metrics
+      fontSize: 16,
+      lineHeight: 24,
+      charWidth: 9.6,
+      gutterWidth: 60,
+      dpr: window.devicePixelRatio || 1,
+
+      // Scroll Offsets
       scrollX: 0,
-      paddingLeft: 40,
-      paddingRight: 40,
-      selectedIndex: 0,
-      // Selection State
+      scrollY: 0,
+
+      // Selection & Cursor
+      // Anchor & Focus are global character indices [0 .. totalChars]
       selectionAnchor: 0,
       selectionFocus: 0,
       isSelecting: false,
-      currentMouseClientX: 0,
-      dpr: window.devicePixelRatio || 1,
-      lastScrollDirection: 1
+
+      // Server status
+      isBusy: false
     };
 
-    // In-memory 5-page sliding cache (Map: pageIndex -> 1024-char string)
-    const pageCache = new Map();
-    const inFlightRequests = new Set();
-    let isServerBusy = false;
-    let edgeScrollRaf = null;
-
     // DOM Elements
-    const editorWrapper = document.getElementById('editorWrapper');
-    const rulerCanvas = document.getElementById('rulerCanvas');
+    const editorContainer = document.getElementById('editorContainer');
+    const gutterCanvas = document.getElementById('gutterCanvas');
     const textCanvas = document.getElementById('textCanvas');
-    const rulerCtx = rulerCanvas.getContext('2d');
+    const gutterCtx = gutterCanvas.getContext('2d');
     const textCtx = textCanvas.getContext('2d');
 
-    const scrollbarTrack = document.getElementById('scrollbarTrack');
-    const scrollbarThumb = document.getElementById('scrollbarThumb');
+    const vScrollbar = document.getElementById('vScrollbar');
+    const vThumb = document.getElementById('vThumb');
 
-    // Dashboard & Inspector
-    const pageChipsContainer = document.getElementById('pageChipsContainer');
-    const lblActivePage = document.getElementById('lblActivePage');
-    const activityLog = document.getElementById('activityLog');
+    const btnUndo = document.getElementById('btnUndo');
+    const btnRedo = document.getElementById('btnRedo');
+    const btnDelete = document.getElementById('btnDelete');
+    const btnZoomIn = document.getElementById('btnZoomIn');
+    const btnZoomOut = document.getElementById('btnZoomOut');
+    const lblZoom = document.getElementById('lblZoom');
 
-    const inspectStatus = document.getElementById('inspectStatus');
-    const cardCurrentLabel = document.getElementById('cardCurrentLabel');
-    const glyphBefore = document.getElementById('glyphBefore');
-    const indexBefore = document.getElementById('indexBefore');
-    const glyphCurrent = document.getElementById('glyphCurrent');
-    const indexCurrent = document.getElementById('indexCurrent');
-    const glyphAfter = document.getElementById('glyphAfter');
-    const indexAfter = document.getElementById('indexAfter');
+    const statCursor = document.getElementById('statCursor');
+    const statSelection = document.getElementById('statSelection');
+    const statDoc = document.getElementById('statDoc');
+    const toastMsg = document.getElementById('toastMsg');
 
-    const fontSizeDisplay = document.getElementById('fontSizeDisplay');
-    const statScroll = document.getElementById('statScroll');
-    const statMaxScroll = document.getElementById('statMaxScroll');
-    const statCharWidth = document.getElementById('statCharWidth');
-    const statDpr = document.getElementById('statDpr');
-    const statDocumentInfo = document.getElementById('statDocumentInfo');
+    function showToast(msg) {
+      toastMsg.textContent = msg;
+    }
 
-    const inputInsertText = document.getElementById('inputInsertText');
-    const btnInsert = document.getElementById('btnInsert');
-    const btnDeleteSelection = document.getElementById('btnDeleteSelection');
+    // --- 1. FONT METRICS & LINE BREAK INDEXING ---
+    function measureFont() {
+      const probeCanvas = document.createElement('canvas');
+      const ctx = probeCanvas.getContext('2d');
+      ctx.font = `${state.fontSize}px ${FONT_FAMILY}`;
+      state.charWidth = ctx.measureText("M".repeat(100)).width / 100;
+      state.lineHeight = Math.round(state.fontSize * 1.5);
+      lblZoom.textContent = `${state.fontSize}px`;
+    }
 
-    function updateActivityLog(msg) {
-      activityLog.textContent = msg;
+    function reindexLines() {
+      const text = state.fullText;
+      const lines = [];
+      const offsets = [0];
+
+      let start = 0;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === '\n') {
+          lines.push(text.substring(start, i));
+          start = i + 1;
+          offsets.push(start);
+        }
+      }
+      lines.push(text.substring(start));
+
+      state.lines = lines;
+      state.lineStartOffsets = offsets;
+      state.totalChars = text.length;
+
+      // Adjust gutter width based on total lines
+      const maxDigits = Math.max(3, String(lines.length).length);
+      state.gutterWidth = Math.max(50, (maxDigits * 8.5) + 24);
+
+      statDoc.textContent = `Lines: ${lines.length.toLocaleString()} | Chars: ${state.totalChars.toLocaleString()}`;
+    }
+
+    // Coordinate conversions: Global Index <-> (Line, Column)
+    function indexToLineCol(index) {
+      index = Math.max(0, Math.min(state.totalChars, index));
+      const offsets = state.lineStartOffsets;
+
+      let low = 0, high = offsets.length - 1, lineIdx = 0;
+      while (low <= high) {
+        const mid = (low + high) >> 1;
+        if (offsets[mid] <= index) {
+          lineIdx = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+
+      const col = index - offsets[lineIdx];
+      return { line: lineIdx, col: col };
+    }
+
+    function lineColToIndex(line, col) {
+      line = Math.max(0, Math.min(state.lines.length - 1, line));
+      const lineLen = state.lines[line].length;
+      col = Math.max(0, Math.min(lineLen, col));
+      return state.lineStartOffsets[line] + col;
     }
 
     function getSelectionRange() {
@@ -636,148 +462,242 @@
       return { start, end, length: end - start };
     }
 
-    // --- 3. BACKEND READ: LOGICAL WINDOW SLICING ---
-    async function apiFetchPage(pageIdx) {
-      const start = pageIdx * PAGE_SIZE;
-      if (start >= state.totalChars && state.totalChars > 0) return null;
-      if (pageCache.has(pageIdx)) return pageCache.get(pageIdx);
-      if (inFlightRequests.has(pageIdx)) return null;
+    // --- 2. CANVAS RENDERING & VIRTUAL VIEWPORT ---
+    function resizeCanvases() {
+      state.dpr = window.devicePixelRatio || 1;
+      const rect = editorContainer.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
 
-      inFlightRequests.add(pageIdx);
-      updateActivityLog(`⚡ [Backend API] Fetching Page #${pageIdx} slice [${start}..${start + PAGE_SIZE - 1}]...`);
+      gutterCanvas.width = state.gutterWidth * state.dpr;
+      gutterCanvas.height = h * state.dpr;
+      gutterCanvas.style.width = `${state.gutterWidth}px`;
+      gutterCanvas.style.height = `${h}px`;
 
-      try {
-        const res = await fetch(`${BACKEND_URL}/slice?start=${start}&length=${PAGE_SIZE}`);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        const pageContent = data.content || "";
+      const textWidth = Math.max(10, w - state.gutterWidth);
+      textCanvas.width = textWidth * state.dpr;
+      textCanvas.height = h * state.dpr;
+      textCanvas.style.width = `${textWidth}px`;
+      textCanvas.style.height = `${h}px`;
 
-        pageCache.set(pageIdx, pageContent);
-        inFlightRequests.delete(pageIdx);
+      gutterCtx.resetTransform();
+      gutterCtx.scale(state.dpr, state.dpr);
+      textCtx.resetTransform();
+      textCtx.scale(state.dpr, state.dpr);
 
-        enforceMaxPages(pageIdx);
-        updateMemoryDashboard();
-        render();
-        return pageContent;
-      } catch (err) {
-        inFlightRequests.delete(pageIdx);
-        updateActivityLog(`⚠️ [Backend Error]: ${err.message}`);
-        return null;
-      }
+      clampScroll();
+      render();
     }
 
-    function enforceMaxPages(triggeringPage) {
-      if (pageCache.size <= MAX_PAGES_IN_MEMORY) return;
+    function getMaxScrollY() {
+      const totalHeight = (state.lines.length * state.lineHeight) + 120;
+      const viewHeight = editorContainer.clientHeight;
+      return Math.max(0, totalHeight - viewHeight);
+    }
 
-      const activePage = getActivePage();
-      let farthestPage = null;
-      let maxDistance = -1;
+    function getMaxScrollX() {
+      // Find approximate max line width
+      let maxCols = 80;
+      for (let i = 0; i < Math.min(200, state.lines.length); i++) {
+        if (state.lines[i].length > maxCols) maxCols = state.lines[i].length;
+      }
+      const totalWidth = (maxCols * state.charWidth) + 100;
+      const viewWidth = textCanvas.clientWidth;
+      return Math.max(0, totalWidth - viewWidth);
+    }
 
-      for (const pageIdx of pageCache.keys()) {
-        const dist = Math.abs(pageIdx - activePage);
-        if (dist > maxDistance) {
-          maxDistance = dist;
-          farthestPage = pageIdx;
-        } else if (dist === maxDistance) {
-          if (state.lastScrollDirection > 0 && pageIdx < farthestPage) {
-            farthestPage = pageIdx;
-          } else if (state.lastScrollDirection < 0 && pageIdx > farthestPage) {
-            farthestPage = pageIdx;
-          }
+    function clampScroll() {
+      state.scrollY = Math.max(0, Math.min(getMaxScrollY(), state.scrollY));
+      state.scrollX = Math.max(0, Math.min(getMaxScrollX(), state.scrollX));
+      updateScrollbar();
+    }
+
+    function updateScrollbar() {
+      const viewHeight = editorContainer.clientHeight;
+      const totalHeight = (state.lines.length * state.lineHeight) + 120;
+      if (totalHeight <= viewHeight) {
+        vThumb.style.display = 'none';
+        return;
+      }
+      vThumb.style.display = 'block';
+      const thumbHeight = Math.max(28, (viewHeight / totalHeight) * viewHeight);
+      const maxScroll = getMaxScrollY();
+      const top = maxScroll > 0 ? (state.scrollY / maxScroll) * (viewHeight - thumbHeight) : 0;
+      vThumb.style.height = `${thumbHeight}px`;
+      vThumb.style.transform = `translateY(${top}px)`;
+    }
+
+    function ensureCursorVisible() {
+      const { line, col } = indexToLineCol(state.selectionFocus);
+      const cursorY = line * state.lineHeight;
+      const cursorX = col * state.charWidth;
+
+      const viewHeight = editorContainer.clientHeight;
+      const viewWidth = textCanvas.clientWidth;
+
+      if (cursorY < state.scrollY) {
+        state.scrollY = cursorY;
+      } else if (cursorY + state.lineHeight > state.scrollY + viewHeight - 20) {
+        state.scrollY = cursorY + state.lineHeight - viewHeight + 20;
+      }
+
+      if (cursorX < state.scrollX) {
+        state.scrollX = Math.max(0, cursorX - 40);
+      } else if (cursorX > state.scrollX + viewWidth - 50) {
+        state.scrollX = cursorX - viewWidth + 50;
+      }
+
+      clampScroll();
+    }
+
+    function render() {
+      const viewHeight = editorContainer.clientHeight;
+      const textWidth = textCanvas.clientWidth;
+
+      // 1. Clear canvases
+      gutterCtx.fillStyle = "#0d1117";
+      gutterCtx.fillRect(0, 0, state.gutterWidth, viewHeight);
+
+      textCtx.fillStyle = "#0d1117";
+      textCtx.fillRect(0, 0, textWidth, viewHeight);
+
+      // 2. Visible line range
+      const startLine = Math.max(0, Math.floor(state.scrollY / state.lineHeight));
+      const endLine = Math.min(state.lines.length - 1, Math.ceil((state.scrollY + viewHeight) / state.lineHeight));
+
+      const { start: selStart, end: selEnd, length: selLen } = getSelectionRange();
+      const activeLineIdx = indexToLineCol(state.selectionFocus).line;
+
+      // Setup typography
+      textCtx.font = `${state.fontSize}px ${FONT_FAMILY}`;
+      textCtx.textBaseline = "middle";
+      gutterCtx.font = `${Math.round(state.fontSize * 0.85)}px ${FONT_FAMILY}`;
+      gutterCtx.textBaseline = "middle";
+
+      for (let l = startLine; l <= endLine; l++) {
+        const lineY = (l * state.lineHeight) - state.scrollY;
+        const lineText = state.lines[l] || "";
+        const lineStartOffset = state.lineStartOffsets[l];
+        const lineEndOffset = lineStartOffset + lineText.length;
+
+        // Current active line highlight
+        if (l === activeLineIdx && selLen === 0) {
+          textCtx.fillStyle = "rgba(255, 255, 255, 0.02)";
+          textCtx.fillRect(0, lineY, textWidth, state.lineHeight);
+        }
+
+        // Gutter line number
+        const isCurrentLine = (l === activeLineIdx);
+        gutterCtx.fillStyle = isCurrentLine ? "var(--accent)" : "#484f58";
+        gutterCtx.textAlign = "right";
+        gutterCtx.fillText(`${l + 1}`, state.gutterWidth - 14, lineY + (state.lineHeight / 2));
+
+        // Selection Highlight on this line
+        if (selLen > 0 && selEnd > lineStartOffset && selStart <= lineEndOffset) {
+          const selColStart = Math.max(0, selStart - lineStartOffset);
+          const selColEnd = Math.min(lineText.length + 1, selEnd - lineStartOffset);
+
+          const selX = (selColStart * state.charWidth) - state.scrollX + 16;
+          const selW = (selColEnd - selColStart) * state.charWidth;
+
+          textCtx.fillStyle = "rgba(56, 139, 253, 0.28)";
+          textCtx.fillRect(selX, lineY + 2, selW, state.lineHeight - 4);
+        }
+
+        // Line Text
+        textCtx.textAlign = "left";
+        textCtx.fillStyle = "#e6edf3";
+        const textX = 16 - state.scrollX;
+        textCtx.fillText(lineText, textX, lineY + (state.lineHeight / 2));
+
+        // Caret Cursor (if no range is selected)
+        if (selLen === 0 && l === activeLineIdx) {
+          const col = state.selectionFocus - lineStartOffset;
+          const caretX = textX + (col * state.charWidth);
+          textCtx.fillStyle = "#58a6ff";
+          textCtx.fillRect(caretX, lineY + 2, 2, state.lineHeight - 4);
         }
       }
 
-      if (farthestPage !== null) {
-        pageCache.delete(farthestPage);
-        const remaining = Array.from(pageCache.keys()).sort((a,b)=>a-b).join(', ');
-        updateActivityLog(`🗑️ [Eviction] Evicted Page #${farthestPage} (farthest from active #${activePage}). In RAM: [${remaining}]`);
-      }
+      updateStatusUI();
     }
 
-    function getActivePage() {
-      const viewportCenter = state.scrollX + (editorWrapper.clientWidth / 2) - state.paddingLeft;
-      const centerChar = Math.max(0, Math.floor(viewportCenter / Math.max(1, state.charWidth)));
-      return Math.floor(centerChar / PAGE_SIZE);
-    }
+    function updateStatusUI() {
+      const { line, col } = indexToLineCol(state.selectionFocus);
+      statCursor.textContent = `Ln ${line + 1}, Col ${col + 1} (Pos #${state.selectionFocus.toLocaleString()})`;
 
-    function updateMemoryDashboard() {
-      const activePage = getActivePage();
-      lblActivePage.textContent = `Page #${activePage}`;
-
-      pageChipsContainer.innerHTML = '';
-      const cachedPages = Array.from(pageCache.keys()).sort((a, b) => a - b);
-
-      cachedPages.forEach(p => {
-        const chip = document.createElement('div');
-        chip.className = `page-chip ${p === activePage ? 'active' : 'cached'}`;
-        chip.textContent = `Page ${p}`;
-        pageChipsContainer.appendChild(chip);
-      });
-    }
-
-    function getCharAtGlobalIndex(globalIdx) {
-      if (globalIdx < 0 || globalIdx >= state.totalChars) return null;
-      const pageIdx = Math.floor(globalIdx / PAGE_SIZE);
-      const offset = globalIdx % PAGE_SIZE;
-
-      if (pageCache.has(pageIdx)) {
-        return pageCache.get(pageIdx)[offset] || " ";
+      const { length } = getSelectionRange();
+      if (length > 0) {
+        statSelection.style.display = 'block';
+        statSelection.textContent = `${length.toLocaleString()} selected`;
+        btnDelete.disabled = false;
+        btnDelete.textContent = `Delete (${length.toLocaleString()})`;
       } else {
-        apiFetchPage(pageIdx);
-        return "·"; // Loading placeholder
+        statSelection.style.display = 'none';
+        btnDelete.disabled = true;
+        btnDelete.textContent = `Delete`;
       }
     }
 
-    // --- 4. BACKEND ADD (INSERTION) & DELETE ---
-    async function apiInsertText(position, text) {
-      if (!text || isServerBusy) return;
-      isServerBusy = true;
-      updateActivityLog(`⏳ [Server Sync] Inserting '${text.length > 20 ? text.substring(0,20)+'...' : text}' at #${position}...`);
+    // --- 3. MOUSE COORDINATES TO LINE/COL HIT-TESTING ---
+    function getIndexFromMouse(clientX, clientY) {
+      const rect = textCanvas.getBoundingClientRect();
+      const relY = clientY - rect.top + state.scrollY;
+      const relX = clientX - rect.left + state.scrollX - 16;
+
+      const line = Math.max(0, Math.min(state.lines.length - 1, Math.floor(relY / state.lineHeight)));
+      const col = Math.max(0, Math.min(state.lines[line].length, Math.round(relX / state.charWidth)));
+
+      return lineColToIndex(line, col);
+    }
+
+    // --- 4. BACKEND INTEGRATION (READ, INSERT, DELETE, UNDO, REDO) ---
+    async function fetchFullText() {
+      try {
+        showToast("Syncing with backend Piece Table...");
+        const res = await fetch(`${BACKEND_URL}/text`);
+        if (!res.ok) throw new Error("Backend HTTP " + res.status);
+        const data = await res.json();
+        state.fullText = data.text || "";
+        reindexLines();
+        render();
+        showToast("Connected to Piece Table (Authoritative)");
+      } catch (err) {
+        showToast("⚠️ Could not connect to Spring Boot backend: " + err.message);
+      }
+    }
+
+    async function apiInsert(pos, text) {
+      if (state.isBusy) return;
+      state.isBusy = true;
+      showToast("Inserting text into Piece Table...");
 
       try {
         const res = await fetch(`${BACKEND_URL}/insert`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ position: position, text: text })
+          body: JSON.stringify({ position: pos, text: text })
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
+        await fetchFullText();
 
-        // 1. Authoritative length update
-        state.totalChars = data.newTotalLength;
-        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount}`;
-
-        // 2. Invalidate shifted pages from edit point onwards
-        const activePage = Math.floor(position / PAGE_SIZE);
-        for (const p of Array.from(pageCache.keys())) {
-          if (p >= activePage) {
-            pageCache.delete(p);
-          }
-        }
-
-        // 3. Re-fetch authoritative slice
-        await apiFetchPage(activePage);
-
-        // 4. Advance selection cursor
-        state.selectionAnchor = position + text.length;
-        state.selectionFocus = position + text.length;
-
-        updateActivityLog(`✅ [Backend Confirmed]: Inserted ${text.length} chars at #${position}. Total: ${data.newTotalLength} (Pieces: ${data.piecesCount}).`);
-        clampScroll();
+        state.selectionAnchor = pos + text.length;
+        state.selectionFocus = pos + text.length;
+        ensureCursorVisible();
         render();
-        updateSelectionUI();
+        showToast("Inserted successfully");
       } catch (err) {
-        updateActivityLog(`❌ [Insert Failed]: ${err.message}`);
+        showToast("Error inserting: " + err.message);
       } finally {
-        isServerBusy = false;
+        state.isBusy = false;
       }
     }
 
-    async function apiDeleteSelection() {
-      const { start, end, length } = getSelectionRange();
-      if (length <= 0 || isServerBusy) return;
-      isServerBusy = true;
-      updateActivityLog(`⏳ [Server Sync] Deleting ${length} chars from #${start} to #${end}...`);
+    async function apiDelete() {
+      const { start, length } = getSelectionRange();
+      if (length === 0 || state.isBusy) return;
+      state.isBusy = true;
+      showToast(`Deleting ${length} characters...`);
 
       try {
         const res = await fetch(`${BACKEND_URL}/delete`, {
@@ -786,579 +706,86 @@
           body: JSON.stringify({ position: start, length: length })
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
+        await fetchFullText();
 
-        // 1. Authoritative length update
-        state.totalChars = data.newTotalLength;
-        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount}`;
-
-        // 2. Invalidate shifted pages from start onwards
-        const activePage = Math.floor(start / PAGE_SIZE);
-        for (const p of Array.from(pageCache.keys())) {
-          if (p >= activePage) {
-            pageCache.delete(p);
-          }
-        }
-
-        // 3. Collapse selection to deleted position
         state.selectionAnchor = start;
         state.selectionFocus = start;
-
-        // 4. Re-fetch authoritative slice
-        await apiFetchPage(activePage);
-
-        updateActivityLog(`✅ [Backend Confirmed]: Deleted ${length} chars. New Total: ${data.newTotalLength} (Pieces: ${data.piecesCount}).`);
-        clampScroll();
+        ensureCursorVisible();
         render();
-        updateSelectionUI();
+        showToast("Deleted successfully");
       } catch (err) {
-        updateActivityLog(`❌ [Delete Failed]: ${err.message}`);
+        showToast("Error deleting: " + err.message);
       } finally {
-        isServerBusy = false;
+        state.isBusy = false;
       }
     }
 
     async function apiUndo() {
-      if (isServerBusy) return;
-      isServerBusy = true;
-      updateActivityLog(`⏳ [Server Sync] Undoing last operation...`);
+      if (state.isBusy) return;
+      state.isBusy = true;
+      showToast("Undoing operation...");
 
       try {
         const res = await fetch(`${BACKEND_URL}/undo`, { method: "POST" });
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
-
-        state.totalChars = data.newTotalLength;
-        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount}`;
-
-        // Clear page cache to re-read authoritative state
-        pageCache.clear();
+        await fetchFullText();
 
         const desc = data.description || {};
         const pos = Math.min(state.totalChars, desc.position || 0);
-        const targetPage = Math.floor(pos / PAGE_SIZE);
-
-        await apiFetchPage(targetPage);
-        state.selectionAnchor = pos;
-        state.selectionFocus = pos;
-
-        updateActivityLog(`↶ [Undo Succeeded]: ${desc.details || 'Reverted operation'} | Total chars: ${data.newTotalLength}`);
-        clampScroll();
+        state.selectionAnchor = state.selectionFocus = pos;
+        ensureCursorVisible();
         render();
-        updateSelectionUI();
+        showToast(desc.details || "Undo completed");
       } catch (err) {
-        updateActivityLog(`❌ [Undo Failed]: ${err.message}`);
+        showToast("Undo failed: " + err.message);
       } finally {
-        isServerBusy = false;
+        state.isBusy = false;
       }
     }
 
     async function apiRedo() {
-      if (isServerBusy) return;
-      isServerBusy = true;
-      updateActivityLog(`⏳ [Server Sync] Redoing operation...`);
+      if (state.isBusy) return;
+      state.isBusy = true;
+      showToast("Redoing operation...");
 
       try {
         const res = await fetch(`${BACKEND_URL}/redo`, { method: "POST" });
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
-
-        state.totalChars = data.newTotalLength;
-        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount}`;
-
-        // Clear page cache to re-read authoritative state
-        pageCache.clear();
+        await fetchFullText();
 
         const desc = data.description || {};
         const pos = Math.min(state.totalChars, desc.position || 0);
-        const targetPage = Math.floor(pos / PAGE_SIZE);
-
-        await apiFetchPage(targetPage);
-        state.selectionAnchor = pos;
-        state.selectionFocus = pos;
-
-        updateActivityLog(`↷ [Redo Succeeded]: ${desc.details || 'Reapplied operation'} | Total chars: ${data.newTotalLength}`);
-        clampScroll();
+        state.selectionAnchor = state.selectionFocus = pos;
+        ensureCursorVisible();
         render();
-        updateSelectionUI();
+        showToast(desc.details || "Redo completed");
       } catch (err) {
-        updateActivityLog(`❌ [Redo Failed]: ${err.message}`);
+        showToast("Redo failed: " + err.message);
       } finally {
-        isServerBusy = false;
+        state.isBusy = false;
       }
     }
 
-    // --- 5. EDGE AUTO-SCROLL ENGINE (CONSTRAINED BY BACKEND LOAD) ---
-    function checkAndStartEdgeScroll() {
-      if (edgeScrollRaf) return;
-      edgeScrollLoop();
-    }
-
-    function edgeScrollLoop() {
-      if (!state.isSelecting) {
-        edgeScrollRaf = null;
-        return;
-      }
-
-      const rect = textCanvas.getBoundingClientRect();
-      const mouseX = state.currentMouseClientX;
-      let scrollDelta = 0;
-
-      // Left edge zone check
-      if (mouseX < rect.left + EDGE_SCROLL_MARGIN) {
-        const penetration = Math.max(1, (rect.left + EDGE_SCROLL_MARGIN) - mouseX);
-        const speedMultiplier = Math.min(3.5, penetration / 18);
-        scrollDelta = -Math.round(state.charWidth * 1.6 * speedMultiplier);
-      }
-      // Right edge zone check
-      else if (mouseX > rect.right - EDGE_SCROLL_MARGIN) {
-        const penetration = Math.max(1, mouseX - (rect.right - EDGE_SCROLL_MARGIN));
-        const speedMultiplier = Math.min(3.5, penetration / 18);
-        scrollDelta = Math.round(state.charWidth * 1.6 * speedMultiplier);
-      }
-
-      if (scrollDelta !== 0) {
-        // BACKEND LOAD CONSTRAINT:
-        // Identify which page we are scrolling into
-        const targetScroll = state.scrollX + scrollDelta;
-        const targetFirstChar = Math.max(0, Math.floor((targetScroll - state.paddingLeft) / Math.max(1, state.charWidth)));
-        const targetPage = Math.floor(targetFirstChar / PAGE_SIZE);
-
-        if (inFlightRequests.has(targetPage)) {
-          // Throttled by backend latency! Wait for page slice to return.
-          updateActivityLog(`⏳ [Edge Scroll Paused]: Waiting for Page #${targetPage} to load from backend...`);
-          edgeScrollRaf = requestAnimationFrame(edgeScrollLoop);
-          return;
-        }
-
-        state.scrollX += scrollDelta;
-        clampScroll();
-
-        // Update selection endpoint under mouse
-        state.selectionFocus = getIndexFromClientX(mouseX);
-        updateSelectionUI();
-        render();
-      }
-
-      edgeScrollRaf = requestAnimationFrame(edgeScrollLoop);
-    }
-
-    function stopEdgeScroll() {
-      if (edgeScrollRaf) {
-        cancelAnimationFrame(edgeScrollRaf);
-        edgeScrollRaf = null;
-      }
-    }
-
-    function ensureIndexVisible(idx) {
-      const charX = state.paddingLeft + (idx * state.charWidth);
-      const viewportWidth = editorWrapper.clientWidth;
-      const margin = state.charWidth * 5;
-
-      if (charX < state.scrollX + margin) {
-        state.scrollX = Math.max(0, charX - margin);
-        clampScroll();
-      } else if (charX > state.scrollX + viewportWidth - margin) {
-        state.scrollX = charX - viewportWidth + margin;
-        clampScroll();
-      }
-    }
-
-    // --- 6. MONOSPACE PROBE & SIZING ---
-    function measureCharWidth() {
-      const probeCanvas = document.createElement('canvas');
-      const ctx = probeCanvas.getContext('2d');
-      ctx.font = `${state.fontSize}px ${FONT_FAMILY}`;
-      const testString = "M".repeat(1000);
-      const measuredTotal = ctx.measureText(testString).width;
-      state.charWidth = measuredTotal / 1000;
-
-      statCharWidth.textContent = `${state.charWidth.toFixed(4)} px`;
-      statDpr.textContent = `${(window.devicePixelRatio || 1).toFixed(2)}x`;
-      fontSizeDisplay.textContent = `${state.fontSize}px`;
-    }
-
-    function getMaxScroll() {
-      const viewportWidth = editorWrapper.clientWidth;
-      const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
-      return Math.max(0, totalWidth - viewportWidth);
-    }
-
-    function clampScroll() {
-      const max = getMaxScroll();
-      if (state.scrollX > max) state.scrollX = max;
-      if (state.scrollX < 0) state.scrollX = 0;
-      statScroll.textContent = `${Math.round(state.scrollX)} px`;
-      statMaxScroll.textContent = `${Math.round(max)} px`;
-      updateScrollbar();
-    }
-
-    function resizeCanvases() {
-      state.dpr = window.devicePixelRatio || 1;
-      const rect = editorWrapper.getBoundingClientRect();
-      const cssWidth = rect.width;
-
-      rulerCanvas.width = cssWidth * state.dpr;
-      rulerCanvas.height = 28 * state.dpr;
-      rulerCanvas.style.width = `${cssWidth}px`;
-      rulerCanvas.style.height = `28px`;
-
-      textCanvas.width = cssWidth * state.dpr;
-      textCanvas.height = 85 * state.dpr;
-      textCanvas.style.width = `${cssWidth}px`;
-      textCanvas.style.height = `85px`;
-
-      rulerCtx.resetTransform();
-      rulerCtx.scale(state.dpr, state.dpr);
-
-      textCtx.resetTransform();
-      textCtx.scale(state.dpr, state.dpr);
-
-      clampScroll();
-      render();
-    }
-
-    // --- 7. PREFETCH TRIGGER ---
-    function checkPrefetchTrigger(firstVisible, lastVisible) {
-      if (state.totalChars <= 0) return;
-      const currentActive = getActivePage();
-
-      const distToNextPage = ((currentActive + 1) * PAGE_SIZE) - lastVisible;
-      if (distToNextPage <= PREFETCH_THRESHOLD && ((currentActive + 1) * PAGE_SIZE) < state.totalChars) {
-        if (!pageCache.has(currentActive + 1) && !inFlightRequests.has(currentActive + 1)) {
-          apiFetchPage(currentActive + 1);
-        }
-      }
-
-      const distToPrevPage = firstVisible - (currentActive * PAGE_SIZE);
-      if (distToPrevPage <= PREFETCH_THRESHOLD && currentActive - 1 >= 0) {
-        if (!pageCache.has(currentActive - 1) && !inFlightRequests.has(currentActive - 1)) {
-          apiFetchPage(currentActive - 1);
-        }
-      }
-    }
-
-    // --- 8. RENDER ENGINE WITH SELECTION HIGHLIGHT ---
-    function render() {
-      const viewportWidth = editorWrapper.clientWidth;
-      const rulerHeight = 28;
-      const textHeight = 85;
-
-      rulerCtx.clearRect(0, 0, viewportWidth, rulerHeight);
-      textCtx.clearRect(0, 0, viewportWidth, textHeight);
-
-      rulerCtx.fillStyle = "#0d1322";
-      rulerCtx.fillRect(0, 0, viewportWidth, rulerHeight);
-      textCtx.fillStyle = "#070a12";
-      textCtx.fillRect(0, 0, viewportWidth, textHeight);
-
-      if (state.totalChars === 0) return;
-
-      const firstVisible = Math.max(0, Math.floor((state.scrollX - state.paddingLeft) / state.charWidth));
-      const lastVisible = Math.min(state.totalChars, Math.ceil((state.scrollX + viewportWidth - state.paddingLeft) / state.charWidth) + 1);
-
-      const startPage = Math.floor(firstVisible / PAGE_SIZE);
-      const endPage = Math.floor(lastVisible / PAGE_SIZE);
-      for (let p = startPage; p <= endPage; p++) {
-        if (!pageCache.has(p) && !inFlightRequests.has(p)) {
-          apiFetchPage(p);
-        }
-      }
-
-      checkPrefetchTrigger(firstVisible, lastVisible);
-      updateMemoryDashboard();
-
-      // --- RULER ---
-      rulerCtx.font = `10px ${FONT_FAMILY}`;
-      rulerCtx.textBaseline = "alphabetic";
-
-      const step = state.charWidth < 12 ? 20 : 10;
-      const firstTick = Math.floor(firstVisible / step) * step;
-
-      for (let i = firstTick; i <= lastVisible; i += step) {
-        if (i < 0 || i > state.totalChars) continue;
-        const x = state.paddingLeft + (i * state.charWidth) - state.scrollX;
-        if (x >= -40 && x <= viewportWidth + 40) {
-          const isPageBoundary = (i % PAGE_SIZE === 0);
-          if (isPageBoundary) {
-            const pageNum = i / PAGE_SIZE;
-            rulerCtx.strokeStyle = "#a855f7";
-            rulerCtx.lineWidth = 2;
-            rulerCtx.beginPath();
-            rulerCtx.moveTo(x, 0);
-            rulerCtx.lineTo(x, rulerHeight);
-            rulerCtx.stroke();
-
-            rulerCtx.fillStyle = "#c084fc";
-            rulerCtx.font = `bold 10px ${FONT_FAMILY}`;
-            rulerCtx.fillText(`PAGE #${pageNum} [${i}]`, x + 4, rulerHeight - 6);
-            rulerCtx.font = `10px ${FONT_FAMILY}`;
-          } else {
-            rulerCtx.strokeStyle = "#2e3b52";
-            rulerCtx.lineWidth = 1;
-            rulerCtx.beginPath();
-            rulerCtx.moveTo(x, rulerHeight - 10);
-            rulerCtx.lineTo(x, rulerHeight);
-            rulerCtx.stroke();
-
-            rulerCtx.fillStyle = "#64748b";
-            rulerCtx.fillText(`${i}`, x + 3, rulerHeight - 4);
-          }
-        }
-      }
-
-      // --- SELECTION RANGE HIGHLIGHT ---
-      const { start: selStart, end: selEnd, length: selLength } = getSelectionRange();
-
-      if (selLength > 0) {
-        const visSelStart = Math.max(firstVisible, selStart);
-        const visSelEnd = Math.min(lastVisible, selEnd);
-
-        if (visSelStart < visSelEnd) {
-          const startX = state.paddingLeft + (visSelStart * state.charWidth) - state.scrollX;
-          const selWidth = (visSelEnd - visSelStart) * state.charWidth;
-
-          textCtx.fillStyle = "rgba(56, 189, 248, 0.35)";
-          textCtx.fillRect(startX, 6, selWidth, textHeight - 12);
-
-          textCtx.strokeStyle = "#38bdf8";
-          textCtx.lineWidth = 1.5;
-          textCtx.strokeRect(startX, 6, selWidth, textHeight - 12);
-        }
-      } else {
-        // Single Cursor Caret
-        if (state.selectionFocus >= firstVisible && state.selectionFocus <= lastVisible) {
-          const caretX = state.paddingLeft + (state.selectionFocus * state.charWidth) - state.scrollX;
-          textCtx.strokeStyle = "#f43f5e";
-          textCtx.lineWidth = 2.5;
-          textCtx.beginPath();
-          textCtx.moveTo(caretX, 8);
-          textCtx.lineTo(caretX, textHeight - 8);
-          textCtx.stroke();
-        }
-      }
-
-      // --- TEXT GLYPHS ---
-      textCtx.font = `${state.fontSize}px ${FONT_FAMILY}`;
-      textCtx.textBaseline = "middle";
-      const textY = textHeight / 2;
-
-      for (let i = firstVisible; i < lastVisible; i++) {
-        if (i >= state.totalChars) break;
-        const x = state.paddingLeft + (i * state.charWidth) - state.scrollX;
-
-        if (i > 0 && i % PAGE_SIZE === 0) {
-          textCtx.strokeStyle = "rgba(168, 85, 247, 0.4)";
-          textCtx.lineWidth = 1.5;
-          textCtx.beginPath();
-          textCtx.moveTo(x, 4);
-          textCtx.lineTo(x, textHeight - 4);
-          textCtx.stroke();
-        }
-
-        const char = getCharAtGlobalIndex(i);
-        const isSelected = (selLength > 0 && i >= selStart && i < selEnd);
-        const isCaretChar = (selLength === 0 && i === state.selectionFocus);
-
-        if (isSelected) {
-          textCtx.fillStyle = "#ffffff";
-          textCtx.font = `bold ${state.fontSize}px ${FONT_FAMILY}`;
-        } else if (isCaretChar) {
-          textCtx.fillStyle = "#fda4af";
-          textCtx.font = `bold ${state.fontSize}px ${FONT_FAMILY}`;
-        } else if (char === "·") {
-          textCtx.fillStyle = "#64748b";
-        } else if (char === " ") {
-          textCtx.fillStyle = "#334155";
-        } else {
-          textCtx.fillStyle = "#cbd5e1";
-          textCtx.font = `${state.fontSize}px ${FONT_FAMILY}`;
-        }
-
-        textCtx.fillText(char || " ", x, textY);
-      }
-
-      if (state.scrollX < state.paddingLeft) {
-        textCtx.fillStyle = "rgba(239, 68, 68, 0.08)";
-        textCtx.fillRect(0, 0, state.paddingLeft - state.scrollX, textHeight);
-      }
-    }
-
-    // --- 9. SCROLLBAR INTERFACE ---
-    function updateScrollbar() {
-      const trackWidth = scrollbarTrack.clientWidth;
-      const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
-      const viewportWidth = editorWrapper.clientWidth;
-      const maxScroll = getMaxScroll();
-
-      if (totalWidth <= viewportWidth || maxScroll <= 0) {
-        scrollbarThumb.style.width = `${trackWidth}px`;
-        scrollbarThumb.style.transform = `translateX(0px)`;
-        return;
-      }
-
-      const ratio = viewportWidth / totalWidth;
-      const thumbWidth = Math.max(36, trackWidth * ratio);
-      const usableTrack = trackWidth - thumbWidth;
-      const scrollRatio = state.scrollX / maxScroll;
-      const thumbLeft = Math.max(0, Math.min(usableTrack, scrollRatio * usableTrack));
-
-      scrollbarThumb.style.width = `${thumbWidth}px`;
-      scrollbarThumb.style.transform = `translateX(${thumbLeft}px)`;
-    }
-
-    // --- 10. HIT-TESTING & INSPECTOR ---
-    function getIndexFromClientX(clientX) {
-      const rect = textCanvas.getBoundingClientRect();
-      const clickXInCanvas = clientX - rect.left;
-      const absoluteX = clickXInCanvas + state.scrollX - state.paddingLeft;
-      const rawIndex = Math.floor(absoluteX / Math.max(0.1, state.charWidth));
-      return Math.max(0, Math.min(state.totalChars, rawIndex));
-    }
-
-    function formatGlyph(char) {
-      if (char === undefined || char === null) return `<span class="special-glyph">None</span>`;
-      if (char === " ") return `<span class="special-glyph">[SPACE]</span>`;
-      if (char === "\t") return `<span class="special-glyph">[TAB]</span>`;
-      if (char === "·") return `<span class="special-glyph">[LOADING...]</span>`;
-      return escapeHtml(char);
-    }
-
-    function escapeHtml(str) {
-      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    }
-
-    function getSelectedPreview(start, end) {
-      let preview = "";
-      const len = Math.min(14, end - start);
-      for (let i = 0; i < len; i++) {
-        preview += getCharAtGlobalIndex(start + i) || "";
-      }
-      if (end - start > 14) preview += "...";
-      return preview || "[Empty]";
-    }
-
-    function updateSelectionUI() {
-      const { start, end, length } = getSelectionRange();
-      state.selectedIndex = state.selectionFocus;
-
-      if (length > 0) {
-        inspectStatus.textContent = `Selected: #${start.toLocaleString()} to #${end.toLocaleString()} (${length.toLocaleString()} chars)`;
-        btnDeleteSelection.disabled = false;
-        btnDeleteSelection.textContent = `× Delete Selection (${length.toLocaleString()} chars)`;
-        btnInsert.textContent = `+ Replace Selection`;
-        cardCurrentLabel.textContent = `2. Selected Range (${length} chars)`;
-
-        // 1. Character Before Selection
-        if (start > 0) {
-          const prevChar = getCharAtGlobalIndex(start - 1);
-          glyphBefore.innerHTML = formatGlyph(prevChar);
-          indexBefore.textContent = `Index: #${start - 1}`;
-        } else {
-          glyphBefore.innerHTML = `<span class="special-glyph">[START]</span>`;
-          indexBefore.textContent = `No predecessor`;
-        }
-
-        // 2. Selected Range Preview
-        const previewStr = getSelectedPreview(start, end);
-        glyphCurrent.innerHTML = `<span style="font-size: 16px; color: var(--accent); font-family: var(--font-mono); font-weight: 600;">${escapeHtml(previewStr)}</span>`;
-        indexCurrent.textContent = `Range: #${start} .. #${end}`;
-
-        // 3. Character After Selection
-        if (end < state.totalChars) {
-          const nextChar = getCharAtGlobalIndex(end);
-          glyphAfter.innerHTML = formatGlyph(nextChar);
-          indexAfter.textContent = `Index: #${end}`;
-        } else {
-          glyphAfter.innerHTML = `<span class="special-glyph">[END]</span>`;
-          indexAfter.textContent = `No successor`;
-        }
-      } else {
-        // Single Cursor
-        inspectStatus.textContent = `Cursor at #${state.selectionFocus.toLocaleString()} (Page #${Math.floor(state.selectionFocus / PAGE_SIZE)})`;
-        btnDeleteSelection.disabled = true;
-        btnDeleteSelection.textContent = `× Delete Selection (0 chars)`;
-        btnInsert.textContent = `+ Insert at Cursor (Index #${state.selectionFocus})`;
-        cardCurrentLabel.textContent = `2. Cursor Position`;
-
-        // 1. Character Before
-        if (state.selectionFocus > 0) {
-          const prevChar = getCharAtGlobalIndex(state.selectionFocus - 1);
-          glyphBefore.innerHTML = formatGlyph(prevChar);
-          indexBefore.textContent = `Index: #${state.selectionFocus - 1}`;
-        } else {
-          glyphBefore.innerHTML = `<span class="special-glyph">[START]</span>`;
-          indexBefore.textContent = `No predecessor`;
-        }
-
-        // 2. Clicked Character
-        const curChar = getCharAtGlobalIndex(state.selectionFocus);
-        glyphCurrent.innerHTML = formatGlyph(curChar);
-        indexCurrent.textContent = `Index: #${state.selectionFocus}`;
-
-        // 3. Character After
-        if (state.selectionFocus < state.totalChars - 1) {
-          const nextChar = getCharAtGlobalIndex(state.selectionFocus + 1);
-          glyphAfter.innerHTML = formatGlyph(nextChar);
-          indexAfter.textContent = `Index: #${state.selectionFocus + 1}`;
-        } else {
-          glyphAfter.innerHTML = `<span class="special-glyph">[END]</span>`;
-          indexAfter.textContent = `No successor`;
-        }
-      }
-    }
-
-    // --- 11. ZOOM CONTROLS ---
-    function changeFontSize(delta) {
-      const oldFontSize = state.fontSize;
-      const newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, oldFontSize + delta));
-      if (oldFontSize === newFontSize) return;
-
-      const viewportCenter = editorWrapper.clientWidth / 2;
-      const centerIndex = (state.scrollX + viewportCenter - state.paddingLeft) / state.charWidth;
-
-      state.fontSize = newFontSize;
-      measureCharWidth();
-
-      state.scrollX = (centerIndex * state.charWidth) + state.paddingLeft - viewportCenter;
-      clampScroll();
-      render();
-    }
-
-    function resetFontSize() {
-      state.fontSize = DEFAULT_FONT_SIZE;
-      measureCharWidth();
-      clampScroll();
-      render();
-    }
-
-    // --- 12. MOUSE SELECTION & EDGE AUTO-SCROLL LISTENERS ---
+    // --- 5. INTERACTIVE EVENT HANDLERS ---
     textCanvas.addEventListener('mousedown', (e) => {
-      editorWrapper.focus();
+      editorContainer.focus();
       if (e.button === 0) {
-        const clickedIdx = getIndexFromClientX(e.clientX);
+        const idx = getIndexFromMouse(e.clientX, e.clientY);
         state.isSelecting = true;
-        state.currentMouseClientX = e.clientX;
-
         if (e.shiftKey) {
-          // Shift + Click expands selection from existing anchor
-          state.selectionFocus = clickedIdx;
+          state.selectionFocus = idx;
         } else {
-          state.selectionAnchor = clickedIdx;
-          state.selectionFocus = clickedIdx;
+          state.selectionAnchor = state.selectionFocus = idx;
         }
-
-        updateSelectionUI();
         render();
-        checkAndStartEdgeScroll();
       }
     });
 
     window.addEventListener('mousemove', (e) => {
       if (state.isSelecting) {
-        state.currentMouseClientX = e.clientX;
-        state.selectionFocus = getIndexFromClientX(e.clientX);
-        updateSelectionUI();
+        state.selectionFocus = getIndexFromMouse(e.clientX, e.clientY);
         render();
       }
     });
@@ -1366,207 +793,224 @@
     window.addEventListener('mouseup', () => {
       if (state.isSelecting) {
         state.isSelecting = false;
-        stopEdgeScroll();
-        updateSelectionUI();
         render();
       }
     });
 
-    editorWrapper.addEventListener('wheel', (e) => {
+    editorContainer.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-      state.lastScrollDirection = delta >= 0 ? 1 : -1;
-      state.scrollX += delta * 1.2;
+      state.scrollY += e.deltaY;
+      state.scrollX += e.deltaX;
       clampScroll();
       render();
     }, { passive: false });
 
-    // --- 13. KEYBOARD SHORTCUTS: SELECTION & DELETION ---
+    // Keyboard navigation & typing
     window.addEventListener('keydown', (e) => {
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-      if (isCtrlOrCmd && (e.key === '=' || e.key === '+')) {
-        e.preventDefault();
-        changeFontSize(4);
-        return;
-      }
-      if (isCtrlOrCmd && (e.key === '-' || e.key === '_')) {
-        e.preventDefault();
-        changeFontSize(-4);
-        return;
-      }
-      if (isCtrlOrCmd && e.key === '0') {
-        e.preventDefault();
-        resetFontSize();
-        return;
-      }
-
-      // Undo shortcut: Ctrl+Z / Cmd+Z (without Shift)
+      // Undo / Redo
       if (isCtrlOrCmd && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         apiUndo();
         return;
       }
-
-      // Redo shortcut: Ctrl+Shift+Z / Cmd+Shift+Z or Ctrl+Y / Cmd+Y
       if ((isCtrlOrCmd && e.shiftKey && (e.key === 'z' || e.key === 'Z')) || (isCtrlOrCmd && (e.key === 'y' || e.key === 'Y'))) {
         e.preventDefault();
         apiRedo();
         return;
       }
 
-      // If editor wrapper is focused
-      if (document.activeElement === editorWrapper) {
-        // Multiplier for selection speed based on modifiers
-        // Regular Shift + Arrow = 1 char (or accelerated if held down)
-        // Shift + Alt + Arrow = 15 chars (word/subchunk jump)
-        // Shift + Ctrl/Cmd + Arrow = 100 chars (fast chunk jump)
-        let step = 1;
-        if (isCtrlOrCmd) {
-          step = 100;
-        } else if (e.altKey) {
-          step = 15;
-        } else if (e.repeat) {
-          // If user holds down Shift + Arrow, accelerate dynamically!
-          step = 5;
-        }
+      // Font size
+      if (isCtrlOrCmd && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        changeZoom(2);
+        return;
+      }
+      if (isCtrlOrCmd && (e.key === '-' || e.key === '_')) {
+        e.preventDefault();
+        changeZoom(-2);
+        return;
+      }
 
-        // Shift + PageDown / Shift + PageUp (large jump selection: 500 chars)
-        if (e.shiftKey && e.key === 'PageDown') {
-          e.preventDefault();
-          state.selectionFocus = Math.min(state.totalChars, state.selectionFocus + 500);
-          ensureIndexVisible(state.selectionFocus);
-          updateSelectionUI();
-          render();
-          return;
-        }
-        if (e.shiftKey && e.key === 'PageUp') {
-          e.preventDefault();
-          state.selectionFocus = Math.max(0, state.selectionFocus - 500);
-          ensureIndexVisible(state.selectionFocus);
-          updateSelectionUI();
-          render();
-          return;
-        }
+      if (document.activeElement === editorContainer) {
+        const { line, col } = indexToLineCol(state.selectionFocus);
+        const { length: selLen } = getSelectionRange();
 
-        // Shift + Arrow Right (expand selection right)
-        if (e.shiftKey && e.key === 'ArrowRight') {
+        // Arrow Right
+        if (e.key === 'ArrowRight') {
           e.preventDefault();
-          state.selectionFocus = Math.min(state.totalChars, state.selectionFocus + step);
-          ensureIndexVisible(state.selectionFocus);
-          updateSelectionUI();
-          render();
-          return;
-        }
-        // Shift + Arrow Left (expand selection left)
-        if (e.shiftKey && e.key === 'ArrowLeft') {
-          e.preventDefault();
-          state.selectionFocus = Math.max(0, state.selectionFocus - step);
-          ensureIndexVisible(state.selectionFocus);
-          updateSelectionUI();
-          render();
-          return;
-        }
-        // Shift + Home (select to start)
-        if (e.shiftKey && e.key === 'Home') {
-          e.preventDefault();
-          state.selectionFocus = 0;
-          state.scrollX = 0;
-          clampScroll();
-          updateSelectionUI();
-          render();
-          return;
-        }
-        // Shift + End (select to end)
-        if (e.shiftKey && e.key === 'End') {
-          e.preventDefault();
-          state.selectionFocus = state.totalChars;
-          state.scrollX = getMaxScroll();
-          clampScroll();
-          updateSelectionUI();
-          render();
-          return;
-        }
-        // Arrow Right without Shift (collapse selection right)
-        if (!e.shiftKey && e.key === 'ArrowRight') {
-          e.preventDefault();
-          const { end } = getSelectionRange();
-          const next = Math.min(state.totalChars, Math.max(end, state.selectionFocus + (isCtrlOrCmd ? 50 : (e.altKey ? 10 : 1))));
-          state.selectionAnchor = state.selectionFocus = next;
-          ensureIndexVisible(next);
-          updateSelectionUI();
-          render();
-          return;
-        }
-        // Arrow Left without Shift (collapse selection left)
-        if (!e.shiftKey && e.key === 'ArrowLeft') {
-          e.preventDefault();
-          const { start } = getSelectionRange();
-          const prev = Math.max(0, Math.min(start, state.selectionFocus - (isCtrlOrCmd ? 50 : (e.altKey ? 10 : 1))));
-          state.selectionAnchor = state.selectionFocus = prev;
-          ensureIndexVisible(prev);
-          updateSelectionUI();
-          render();
-          return;
-        }
-
-        // Backspace or Delete on active selection
-        if (e.key === 'Backspace' || e.key === 'Delete') {
-          const { length } = getSelectionRange();
-          if (length > 0) {
-            e.preventDefault();
-            apiDeleteSelection();
-            return;
+          const next = Math.min(state.totalChars, state.selectionFocus + 1);
+          if (e.shiftKey) {
+            state.selectionFocus = next;
+          } else {
+            state.selectionAnchor = state.selectionFocus = (selLen > 0 ? getSelectionRange().end : next);
           }
+          ensureCursorVisible();
+          render();
+          return;
         }
 
-        // Direct character typing
-        if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
+        // Arrow Left
+        if (e.key === 'ArrowLeft') {
           e.preventDefault();
-          const { start, length } = getSelectionRange();
-          if (length > 0) {
-            // Delete selection and insert replacement
+          const prev = Math.max(0, state.selectionFocus - 1);
+          if (e.shiftKey) {
+            state.selectionFocus = prev;
+          } else {
+            state.selectionAnchor = state.selectionFocus = (selLen > 0 ? getSelectionRange().start : prev);
+          }
+          ensureCursorVisible();
+          render();
+          return;
+        }
+
+        // Arrow Down
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const nextLine = Math.min(state.lines.length - 1, line + 1);
+          const nextIdx = lineColToIndex(nextLine, col);
+          if (e.shiftKey) {
+            state.selectionFocus = nextIdx;
+          } else {
+            state.selectionAnchor = state.selectionFocus = nextIdx;
+          }
+          ensureCursorVisible();
+          render();
+          return;
+        }
+
+        // Arrow Up
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          const prevLine = Math.max(0, line - 1);
+          const prevIdx = lineColToIndex(prevLine, col);
+          if (e.shiftKey) {
+            state.selectionFocus = prevIdx;
+          } else {
+            state.selectionAnchor = state.selectionFocus = prevIdx;
+          }
+          ensureCursorVisible();
+          render();
+          return;
+        }
+
+        // Home
+        if (e.key === 'Home') {
+          e.preventDefault();
+          const lineStart = isCtrlOrCmd ? 0 : state.lineStartOffsets[line];
+          if (e.shiftKey) {
+            state.selectionFocus = lineStart;
+          } else {
+            state.selectionAnchor = state.selectionFocus = lineStart;
+          }
+          ensureCursorVisible();
+          render();
+          return;
+        }
+
+        // End
+        if (e.key === 'End') {
+          e.preventDefault();
+          const lineEnd = isCtrlOrCmd ? state.totalChars : state.lineStartOffsets[line] + state.lines[line].length;
+          if (e.shiftKey) {
+            state.selectionFocus = lineEnd;
+          } else {
+            state.selectionAnchor = state.selectionFocus = lineEnd;
+          }
+          ensureCursorVisible();
+          render();
+          return;
+        }
+
+        // Backspace / Delete
+        if (e.key === 'Backspace' || e.key === 'Delete') {
+          e.preventDefault();
+          if (selLen > 0) {
+            apiDelete();
+          } else if (e.key === 'Backspace' && state.selectionFocus > 0) {
+            state.selectionAnchor = state.selectionFocus - 1;
+            apiDelete();
+          } else if (e.key === 'Delete' && state.selectionFocus < state.totalChars) {
+            state.selectionAnchor = state.selectionFocus + 1;
+            apiDelete();
+          }
+          return;
+        }
+
+        // Enter Key: Insert New Line!
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (selLen > 0) {
             (async () => {
-              await apiDeleteSelection();
-              await apiInsertText(state.selectionFocus, e.key);
+              await apiDelete();
+              await apiInsert(state.selectionFocus, "\n");
             })();
           } else {
-            apiInsertText(state.selectionFocus, e.key);
+            apiInsert(state.selectionFocus, "\n");
+          }
+          return;
+        }
+
+        // Tab Key: Insert 4 spaces
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          apiInsert(state.selectionFocus, "    ");
+          return;
+        }
+
+        // Printable text typing
+        if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
+          e.preventDefault();
+          if (selLen > 0) {
+            (async () => {
+              await apiDelete();
+              await apiInsert(state.selectionFocus, e.key);
+            })();
+          } else {
+            apiInsert(state.selectionFocus, e.key);
           }
         }
       }
     });
 
-    // --- 14. SCROLLBAR DRAG & TRACK CLICK ---
-    let isScrollbarDragging = false;
-    let scrollbarDragStartX = 0;
-    let scrollbarDragStartScrollX = 0;
+    // Zoom Buttons
+    function changeZoom(delta) {
+      state.fontSize = Math.max(12, Math.min(48, state.fontSize + delta));
+      measureFont();
+      resizeCanvases();
+    }
 
-    scrollbarThumb.addEventListener('mousedown', (e) => {
+    btnZoomIn.addEventListener('click', () => changeZoom(2));
+    btnZoomOut.addEventListener('click', () => changeZoom(-2));
+    btnUndo.addEventListener('click', () => apiUndo());
+    btnRedo.addEventListener('click', () => apiRedo());
+    btnDelete.addEventListener('click', () => apiDelete());
+
+    // Scrollbar Dragging
+    let isDraggingThumb = false;
+    let thumbStartY = 0;
+    let scrollStartY = 0;
+
+    vThumb.addEventListener('mousedown', (e) => {
       e.stopPropagation();
-      isScrollbarDragging = true;
-      scrollbarDragStartX = e.clientX;
-      scrollbarDragStartScrollX = state.scrollX;
-      scrollbarThumb.classList.add('dragging');
-      document.body.style.userSelect = 'none';
+      isDraggingThumb = true;
+      thumbStartY = e.clientY;
+      scrollStartY = state.scrollY;
+      vThumb.classList.add('dragging');
     });
 
     window.addEventListener('mousemove', (e) => {
-      if (isScrollbarDragging) {
-        const trackWidth = scrollbarTrack.clientWidth;
-        const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
-        const viewportWidth = editorWrapper.clientWidth;
-        const ratio = viewportWidth / totalWidth;
-        const thumbWidth = Math.max(36, trackWidth * ratio);
-        const usableTrack = trackWidth - thumbWidth;
-        const maxScroll = getMaxScroll();
+      if (isDraggingThumb) {
+        const viewHeight = editorContainer.clientHeight;
+        const totalHeight = (state.lines.length * state.lineHeight) + 120;
+        const thumbHeight = parseFloat(vThumb.style.height) || 28;
+        const usable = viewHeight - thumbHeight;
 
-        if (usableTrack > 0 && maxScroll > 0) {
-          const deltaX = e.clientX - scrollbarDragStartX;
-          const scrollDelta = (deltaX / usableTrack) * maxScroll;
-          const targetScrollX = scrollbarDragStartScrollX + scrollDelta;
-          state.lastScrollDirection = targetScrollX >= state.scrollX ? 1 : -1;
-          state.scrollX = targetScrollX;
+        if (usable > 0) {
+          const deltaY = e.clientY - thumbStartY;
+          const ratio = deltaY / usable;
+          state.scrollY = scrollStartY + (ratio * getMaxScrollY());
           clampScroll();
           render();
         }
@@ -1574,122 +1018,20 @@
     });
 
     window.addEventListener('mouseup', () => {
-      if (isScrollbarDragging) {
-        isScrollbarDragging = false;
-        scrollbarThumb.classList.remove('dragging');
-        document.body.style.userSelect = '';
+      if (isDraggingThumb) {
+        isDraggingThumb = false;
+        vThumb.classList.remove('dragging');
       }
     });
-
-    scrollbarTrack.addEventListener('click', (e) => {
-      if (e.target === scrollbarThumb || scrollbarThumb.contains(e.target)) return;
-      const rect = scrollbarTrack.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const trackWidth = rect.width;
-      const totalWidth = state.paddingLeft + (state.totalChars * state.charWidth) + state.paddingRight;
-      const viewportWidth = editorWrapper.clientWidth;
-      const ratio = viewportWidth / totalWidth;
-      const thumbWidth = Math.max(36, trackWidth * ratio);
-      const usableTrack = trackWidth - thumbWidth;
-      const maxScroll = getMaxScroll();
-
-      if (usableTrack > 0 && maxScroll > 0) {
-        const targetLeft = clickX - (thumbWidth / 2);
-        const targetRatio = Math.max(0, Math.min(1, targetLeft / usableTrack));
-        const newScrollX = targetRatio * maxScroll;
-        state.lastScrollDirection = newScrollX >= state.scrollX ? 1 : -1;
-        state.scrollX = newScrollX;
-        clampScroll();
-        render();
-      }
-    });
-
-    // --- 15. BUTTON CONTROLS ---
-    btnInsert.addEventListener('click', () => {
-      const textToInsert = inputInsertText.value;
-      if (textToInsert) {
-        const { start, length } = getSelectionRange();
-        if (length > 0) {
-          (async () => {
-            await apiDeleteSelection();
-            await apiInsertText(state.selectionFocus, textToInsert);
-          })();
-        } else {
-          apiInsertText(state.selectionFocus, textToInsert);
-        }
-      }
-    });
-
-    btnDeleteSelection.addEventListener('click', () => {
-      apiDeleteSelection();
-    });
-
-    document.getElementById('btnUndo').addEventListener('click', () => {
-      apiUndo();
-    });
-
-    document.getElementById('btnRedo').addEventListener('click', () => {
-      apiRedo();
-    });
-
-    function scrollToPage(pageIdx) {
-      if (pageIdx < 0) pageIdx = 0;
-      const maxPage = Math.floor(state.totalChars / PAGE_SIZE);
-      if (pageIdx > maxPage) pageIdx = maxPage;
-
-      const targetChar = pageIdx * PAGE_SIZE;
-      state.lastScrollDirection = (targetChar * state.charWidth) >= state.scrollX ? 1 : -1;
-      state.scrollX = state.paddingLeft + (targetChar * state.charWidth);
-      clampScroll();
-      render();
-      state.selectionAnchor = state.selectionFocus = targetChar;
-      updateSelectionUI();
-    }
-
-    document.getElementById('btnStart').addEventListener('click', () => scrollToPage(0));
-    document.getElementById('btnEnd').addEventListener('click', () => scrollToPage(Math.floor(state.totalChars / PAGE_SIZE)));
-
-    document.getElementById('btnPrevPage').addEventListener('click', () => {
-      const active = getActivePage();
-      scrollToPage(Math.max(0, active - 1));
-    });
-
-    document.getElementById('btnNextPage').addEventListener('click', () => {
-      const active = getActivePage();
-      scrollToPage(active + 1);
-    });
-
-    document.getElementById('btnJumpPage').addEventListener('click', () => {
-      const val = parseInt(document.getElementById('jumpPageInput').value, 10) || 0;
-      scrollToPage(val);
-    });
-
-    document.getElementById('btnZoomIn').addEventListener('click', () => changeFontSize(4));
-    document.getElementById('btnZoomOut').addEventListener('click', () => changeFontSize(-4));
-    document.getElementById('btnZoomReset').addEventListener('click', resetFontSize);
 
     window.addEventListener('resize', resizeCanvases);
 
-    // --- 16. BOOTSTRAP INITIALIZATION ---
+    // Bootstrap
     async function init() {
-      measureCharWidth();
+      measureFont();
       resizeCanvases();
-
-      try {
-        const res = await fetch(`${BACKEND_URL}/text`);
-        const data = await res.json();
-
-        if (data && data.totalLength > 0) {
-          state.totalChars = data.totalLength;
-        }
-
-        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount || 1}`;
-        await apiFetchPage(0);
-        updateSelectionUI();
-        updateActivityLog(`[Connected]: Backend ready on http://localhost:8081. Document: ${state.totalChars.toLocaleString()} characters.`);
-      } catch (err) {
-        updateActivityLog(`⚠️ [Connection Failed]: Ensure Spring Boot is running on port 8081 (${err.message}).`);
-      }
+      await fetchFullText();
+      editorContainer.focus();
     }
 
     init();
