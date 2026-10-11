@@ -30,6 +30,28 @@ public class PieceTableService {
 
     public PieceTableService() {}
 
+    @jakarta.annotation.PostConstruct
+    public void initDefaultDocument() {
+        if (pieceDirectory.isEmpty()) {
+            StringBuilder sb = new StringBuilder(102400);
+            for (int p = 0; p < 100; p++) {
+                String header = String.format("[PAGE #%03d | %06d..%06d] ", p, p * 1024, (p + 1) * 1024 - 1);
+                String footer = String.format(" [END P#%03d]", p);
+                String filler = "The quick brown fox jumps over the lazy dog. Monospace Piece Table Spring Boot Engine. 0123456789. ";
+                StringBuilder page = new StringBuilder(header);
+                while (page.length() + footer.length() < 1024) {
+                    page.append(filler);
+                }
+                while (page.length() + footer.length() < 1024) {
+                    page.append(".");
+                }
+                page.append(footer);
+                sb.append(page.substring(0, 1024));
+            }
+            initialize(sb.toString());
+        }
+    }
+
     /**
      * First time add original string.
      */
