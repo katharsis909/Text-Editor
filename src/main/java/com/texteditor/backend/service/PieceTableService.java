@@ -140,7 +140,10 @@ public class PieceTableService {
      */
     private String resolvePieceText(Piece piece) {
         StringBuilder buf = (piece.getBuffer() == BufferType.ORIGINAL) ? originalBuffer : addBuffer;
-        return buf.substring(piece.getStart(), piece.getStart() + piece.getLength());
+        if (buf == null || buf.length() == 0) return "";
+        int start = Math.max(0, Math.min(piece.getStart(), buf.length()));
+        int end = Math.max(start, Math.min(piece.getStart() + piece.getLength(), buf.length()));
+        return buf.substring(start, end);
     }
 
     /**
@@ -589,9 +592,12 @@ public class PieceTableService {
                 nextVersionId,
                 desc,
                 getTotalLength(),
-                pieceDirectory
+                pieceDirectory,
+                originalBuffer.toString(),
+                addBuffer.toString()
         );
         versionHistory.add(snapshot);
+        persistVersionsToDisk();
         return snapshot;
     }
 
@@ -605,6 +611,14 @@ public class PieceTableService {
                 // Snapshot current state to undo before rollback
                 undoStack.push(new UndoRedoEntry("RESTORE_VERSION", 0, getTotalLength(), pieceDirectory, "Rollback to Version #" + versionId));
                 redoStack.clear();
+
+                // Restore buffers if saved with snapshot
+                if (v.getOriginalBufferContent() != null) {
+                    this.originalBuffer = new StringBuilder(v.getOriginalBufferContent());
+                }
+                if (v.getAddBufferContent() != null) {
+                    this.addBuffer = new StringBuilder(v.getAddBufferContent());
+                }
 
                 // Restore piece directory
                 this.pieceDirectory = v.getPieceDirectory();
@@ -624,6 +638,45 @@ public class PieceTableService {
             }
         }
         return null;
+    }
+
+    /**
+     * Persist Version History to disk as a companion JSON/text metadata file
+     * e.g. for "projects/main.txt", writes "projects/main.txt.versions.json"
+     */
+    private void persistVersionsToDisk() {
+        if (activeFilePath == null || activeFilePath.isBlank()) return;
+        try {
+            Path verPath = Path.of(activeFilePath + ".versions.json");
+            if (verPath.getParent() != null) {
+                Files.createDirectories(verPath.getParent());
+            }
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            mapper.writeValue(verPath.toFile(), versionHistory);
+        } catch (Exception e) {
+            System.err.println("Version history disk persistence warning: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Load Version History from disk companion file if it exists
+     */
+    public synchronized void loadVersionsFromDisk() {
+        if (activeFilePath == null || activeFilePath.isBlank()) return;
+        try {
+            Path verPath = Path.of(activeFilePath + ".versions.json");
+            if (Files.exists(verPath)) {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                com.fasterxml.jackson.databind.type.CollectionType listType = mapper.getTypeFactory()
+                        .constructCollectionType(ArrayList.class, VersionSnapshot.class);
+                List<VersionSnapshot> loaded = mapper.readValue(verPath.toFile(), listType);
+                if (loaded != null && !loaded.isEmpty()) {
+                    this.versionHistory = loaded;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Version history disk load warning: " + e.getMessage());
+        }
     }
 
     public synchronized List<EditDescription> getHistory() {

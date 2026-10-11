@@ -204,6 +204,7 @@ public class PieceTableController {
             Files.writeString(file.toPath(), "// Empty file created for " + username + "\n", java.nio.charset.StandardCharsets.UTF_8);
         }
         service.loadFromDiskPlan1(fullPath);
+        service.loadVersionsFromDisk();
 
         Map<String, Object> resp = new HashMap<>();
         resp.put("user", username);
@@ -251,6 +252,9 @@ public class PieceTableController {
                 }
             }
         } else if (node.isFile()) {
+            if (node.getName().endsWith(".versions.json")) {
+                return; // Do not display internal version history JSON files in user file tree
+            }
             String rel = node.getAbsolutePath().substring(baseAbsPath.length());
             if (rel.startsWith("/")) rel = rel.substring(1);
             Map<String, String> m = new HashMap<>();

@@ -458,6 +458,7 @@
           <span>Keys:</span>
           <span style="color:var(--text); font-family:var(--font-mono);">Enter (Newline)</span> &bull;
           <span style="color:var(--text); font-family:var(--font-mono);">Backspace (Delete)</span> &bull;
+          <span style="color:var(--text); font-family:var(--font-mono);">Ctrl/Cmd+C / V</span> &bull;
           <span style="color:var(--text); font-family:var(--font-mono);">Shift+Arrow (Select)</span>
         </div>
       </div>
@@ -1131,7 +1132,11 @@
         return;
       }
 
-      if (document.activeElement === editorContainer) {
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
+      const isInputFocused = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+      const isModalOpen = versionModal && versionModal.style.display !== 'none';
+
+      if (!isInputFocused && !isModalOpen) {
         const { line, col } = indexToLineCol(state.selectionFocus);
         const { length: selLen } = getSelectionRange();
 
@@ -1257,6 +1262,70 @@
           return;
         }
 
+        // Select All: Ctrl+A / Cmd+A
+        if (isCtrlOrCmd && (e.key === 'a' || e.key === 'A')) {
+          e.preventDefault();
+          state.selectionAnchor = 0;
+          state.selectionFocus = state.totalChars;
+          render();
+          return;
+        }
+
+        // Copy: Ctrl+C / Cmd+C
+        if (isCtrlOrCmd && (e.key === 'c' || e.key === 'C')) {
+          if (selLen > 0) {
+            e.preventDefault();
+            const { start, end } = getSelectionRange();
+            const textToCopy = state.fullText.substring(start, end);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(textToCopy).catch(err => {
+                console.warn("Clipboard writeText failed:", err);
+              });
+            }
+            showToast(`Copied ${selLen} chars to clipboard`);
+          }
+          return;
+        }
+
+        // Cut: Ctrl+X / Cmd+X
+        if (isCtrlOrCmd && (e.key === 'x' || e.key === 'X')) {
+          if (selLen > 0) {
+            e.preventDefault();
+            const { start, end } = getSelectionRange();
+            const textToCopy = state.fullText.substring(start, end);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(textToCopy).catch(err => {
+                console.warn("Clipboard writeText failed:", err);
+              });
+            }
+            showToast(`Cut ${selLen} chars`);
+            enqueueOperation(() => apiDelete());
+          }
+          return;
+        }
+
+        // Paste: Ctrl+V / Cmd+V
+        if (isCtrlOrCmd && (e.key === 'v' || e.key === 'V')) {
+          e.preventDefault();
+          if (navigator.clipboard && navigator.clipboard.readText) {
+            navigator.clipboard.readText().then(text => {
+              if (text && text.length > 0) {
+                if (selLen > 0) {
+                  enqueueOperation(async () => {
+                    await apiDelete();
+                    await apiInsert(state.selectionFocus, text);
+                  });
+                } else {
+                  enqueueOperation(() => apiInsert(state.selectionFocus, text));
+                }
+              }
+            }).catch(err => {
+              showToast("Clipboard read blocked. Use browser paste event.");
+            });
+          }
+          return;
+        }
+
         // Printable keys
         if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
           e.preventDefault();
@@ -1268,6 +1337,39 @@
           } else {
             enqueueOperation(() => apiInsert(state.selectionFocus, e.key));
           }
+        }
+      }
+    });
+
+    // Native clipboard event listeners (for context menu or standard browser triggers)
+    window.addEventListener('copy', (e) => {
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      const { start, end, length: selLen } = getSelectionRange();
+      if (selLen > 0) {
+        const textToCopy = state.fullText.substring(start, end);
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', textToCopy);
+          e.preventDefault();
+          showToast(`Copied ${selLen} chars to clipboard`);
+        }
+      }
+    });
+
+    window.addEventListener('paste', (e) => {
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      const text = e.clipboardData ? e.clipboardData.getData('text/plain') : "";
+      if (text && text.length > 0) {
+        e.preventDefault();
+        const { length: selLen } = getSelectionRange();
+        if (selLen > 0) {
+          enqueueOperation(async () => {
+            await apiDelete();
+            await apiInsert(state.selectionFocus, text);
+          });
+        } else {
+          enqueueOperation(() => apiInsert(state.selectionFocus, text));
         }
       }
     });
