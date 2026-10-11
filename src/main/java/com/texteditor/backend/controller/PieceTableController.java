@@ -39,7 +39,7 @@ public class PieceTableController {
     @GetMapping("/slice")
     public ResponseEntity<Map<String, Object>> getSlice(
             @RequestParam(defaultValue = "0") int start,
-            @RequestParam(defaultValue = "1024") int length) {
+            @RequestParam(defaultValue = "10240") int length) {
         String slice = service.getSlice(start, length);
         Map<String, Object> response = new HashMap<>();
         response.put("start", start);
@@ -118,7 +118,35 @@ public class PieceTableController {
         response.put("redoStackSize", service.getRedoStackSize());
         response.put("canUndo", service.canUndo());
         response.put("canRedo", service.canRedo());
+        response.put("versionCount", service.getVersionHistory().size());
+        response.put("activeFilePath", service.getActiveFilePath());
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/versions")
+    public ResponseEntity<List<com.texteditor.backend.model.VersionSnapshot>> getVersions() {
+        return ResponseEntity.ok(service.getVersionHistory());
+    }
+
+    @PostMapping("/versions/create")
+    public ResponseEntity<com.texteditor.backend.model.VersionSnapshot> createVersion(@RequestBody(required = false) Map<String, String> body) {
+        String desc = (body != null) ? body.getOrDefault("description", "") : "";
+        com.texteditor.backend.model.VersionSnapshot snapshot = service.createVersion(desc);
+        return ResponseEntity.ok(snapshot);
+    }
+
+    @PostMapping("/versions/restore/{versionId}")
+    public ResponseEntity<Map<String, Object>> restoreVersion(@PathVariable int versionId) {
+        com.texteditor.backend.model.VersionSnapshot snapshot = service.restoreVersion(versionId);
+        if (snapshot == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("version", snapshot);
+        resp.put("newTotalLength", service.getTotalLength());
+        resp.put("text", service.getText());
+        resp.put("piecesCount", service.getPieceDirectory().size());
+        return ResponseEntity.ok(resp);
     }
 
     @PostMapping("/save")

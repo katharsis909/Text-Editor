@@ -148,3 +148,23 @@ Because `originalBuffer` and `addBuffer` are append-only/immutable, text is **ne
 - **Delete Redo**:
   - Re-applies the deletion snapshot from `redoStack`, remembering the exact position interval $[position, position + length)$.
 
+---
+
+## 8. Scaled Page Slicing (10,240 Chars/Page) & Version History
+
+### 8.1 10,240 Chars / Logical Page Slicing
+- The logical virtual paging chunk size was scaled from 1,024 to **10,240 characters**:
+  $$\text{Page } P = [P \times 10,240, \; (P + 1) \times 10,240)$$
+- With a 5-page sliding cache, the frontend holds **51,200 characters** in active memory, drastically reducing HTTP roundtrips while scrolling through large documents.
+
+### 8.2 Version History: Storing Piece Directory Snapshots
+- **Design Philosophy**:
+  - *"Simply store all piece directory for all versions. Ineffective but simple for now, as there likely won't be many versions and not much changes in directories."*
+- **Implementation**:
+  - A `VersionSnapshot` captures `versionId`, `timestamp`, `description`, `totalLength`, and an immutable clone of `pieceDirectory`.
+  - Storing a version does **not** duplicate the raw text in memory or disk: it only stores the list of lightweight descriptor pointers pointing into the append-only buffers.
+- **Rollback Operation**:
+  - Restoring version $V$ swaps the active `pieceDirectory` with $V$'s stored descriptor list.
+  - Automatically triggers auto-save to disk, ensuring disk persistence stays identical to the restored version state.
+
+

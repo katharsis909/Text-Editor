@@ -319,7 +319,7 @@
           </div>
         </div>
         <div style="font-size: 12px; color: var(--accent); font-family: var(--font-mono);">
-          Active Viewport: <strong id="lblActivePage">Page #0</strong> (1024 Chars/Page)
+          Active Viewport: <strong id="lblActivePage">Page #0</strong> (10,240 Chars/Page)
         </div>
       </div>
       <div class="log-strip" id="activityLog">
@@ -395,11 +395,34 @@
         </tbody>
       </table>
     </div>
+
+    <!-- VERSION HISTORY TABLE (STORES PIECE DIRECTORY FOR EACH VERSION) -->
+    <div class="pieces-table-container" style="max-height: 200px;">
+      <div style="font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <span>VERSION HISTORY (STORED PIECE DIRECTORIES):</span>
+        <button id="btnCreateVersion" style="font-size: 11px; padding: 2px 8px;">+ Save New Version Snapshot</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Version #</th>
+            <th>Description</th>
+            <th>Timestamp</th>
+            <th>Total Length</th>
+            <th>Pieces Count</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="versionsTableBody">
+          <!-- Populated dynamically -->
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <script>
     const BACKEND_URL = "http://localhost:8081/api/piecetable";
-    const PAGE_SIZE = 1024;
+    const PAGE_SIZE = 10240; // 10,240 Chars / Page
     const MAX_PAGES_IN_RAM = 5;
     const FONT_FAMILY = "'JetBrains Mono', 'Menlo', 'Monaco', monospace";
 
@@ -613,6 +636,24 @@
           piecesTableBody.appendChild(row);
         });
 
+        // Populate Version History Table
+        const verRes = await fetch(`${BACKEND_URL}/versions`);
+        const versions = await verRes.json();
+        const versionsTableBody = document.getElementById('versionsTableBody');
+        versionsTableBody.innerHTML = '';
+        (versions || []).forEach(v => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><strong>v${v.versionId}</strong></td>
+            <td>${v.description || '-'}</td>
+            <td>${new Date(v.timestamp).toLocaleTimeString()}</td>
+            <td>${v.totalLength.toLocaleString()}</td>
+            <td>${v.piecesCount} pieces</td>
+            <td><button onclick="restoreVersion(${v.versionId})" style="padding: 2px 6px; font-size: 10px;">↺ Rollback</button></td>
+          `;
+          versionsTableBody.appendChild(row);
+        });
+
         // Also fetch text
         const textRes = await fetch(`${BACKEND_URL}/text`);
         const textData = await textRes.json();
@@ -622,9 +663,21 @@
 
         // Preload active page into cache
         await apiFetchPage(state.activePage);
-        logMsg(`[Telemetry Synced]: Document has ${data.totalLength} chars across ${(data.pieceDirectory || []).length} pieces.`);
+        logMsg(`[Telemetry Synced]: Document has ${data.totalLength} chars across ${(data.pieceDirectory || []).length} pieces | Versions: ${(versions || []).length}`);
       } catch (err) {
         logMsg(`⚠️ Error connecting to backend: ${err.message}`);
+      }
+    }
+
+    async function restoreVersion(versionId) {
+      try {
+        logMsg(`Restoring document to Version #${versionId}...`);
+        const res = await fetch(`${BACKEND_URL}/versions/restore/${versionId}`, { method: "POST" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        await refreshTelemetry();
+        logMsg(`✅ Successfully rolled back to Version #${versionId}`);
+      } catch (err) {
+        logMsg(`❌ Error restoring version: ${err.message}`);
       }
     }
 
@@ -670,6 +723,18 @@
     };
 
     document.getElementById('btnRefresh').onclick = refreshTelemetry;
+
+    document.getElementById('btnCreateVersion').onclick = async () => {
+      const desc = prompt("Enter version description:", `Snapshot v${Date.now()}`);
+      if (desc !== null) {
+        await fetch(`${BACKEND_URL}/versions/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: desc })
+        });
+        refreshTelemetry();
+      }
+    };
 
     window.addEventListener('resize', resizeCanvases);
 

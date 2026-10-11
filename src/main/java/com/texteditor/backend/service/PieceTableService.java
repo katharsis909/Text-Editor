@@ -4,6 +4,7 @@ import com.texteditor.backend.model.BufferType;
 import com.texteditor.backend.model.EditDescription;
 import com.texteditor.backend.model.Piece;
 import com.texteditor.backend.model.UndoRedoEntry;
+import com.texteditor.backend.model.VersionSnapshot;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -34,6 +35,9 @@ public class PieceTableService {
     // Undo & Redo Stacks (Descriptors snapshots & interval tracking)
     private Deque<UndoRedoEntry> undoStack = new ArrayDeque<>();
     private Deque<UndoRedoEntry> redoStack = new ArrayDeque<>();
+
+    // Version History: Simply store piece directory for each version
+    private List<VersionSnapshot> versionHistory = new ArrayList<>();
 
     // Active File Path for automatic saving on every edit
     private String activeFilePath = "data/users/megha/projects/main.txt";
@@ -92,10 +96,19 @@ public class PieceTableService {
         this.history = new ArrayList<>();
         this.undoStack.clear();
         this.redoStack.clear();
+        this.versionHistory = new ArrayList<>();
 
         if (this.originalBuffer.length() > 0) {
             this.pieceDirectory.add(new Piece(BufferType.ORIGINAL, 0, this.originalBuffer.length()));
         }
+
+        // Create initial Version 1 snapshot
+        this.versionHistory.add(new VersionSnapshot(
+                1,
+                "Initial Version",
+                this.originalBuffer.length(),
+                this.pieceDirectory
+        ));
 
         EditDescription desc = new EditDescription(
                 "INITIALIZE",
@@ -562,6 +575,55 @@ public class PieceTableService {
 
     public synchronized List<Piece> getPieceDirectory() {
         return new ArrayList<>(pieceDirectory);
+    }
+
+    /**
+     * VERSION HISTORY:
+     * Simply stores the full piece directory descriptor list for each version.
+     * Ineffective but simple for now, as there likely won't be many versions and not much changes in directories.
+     */
+    public synchronized VersionSnapshot createVersion(String description) {
+        int nextVersionId = versionHistory.size() + 1;
+        String desc = (description != null && !description.isBlank()) ? description : "Version " + nextVersionId;
+        VersionSnapshot snapshot = new VersionSnapshot(
+                nextVersionId,
+                desc,
+                getTotalLength(),
+                pieceDirectory
+        );
+        versionHistory.add(snapshot);
+        return snapshot;
+    }
+
+    public synchronized List<VersionSnapshot> getVersionHistory() {
+        return new ArrayList<>(versionHistory);
+    }
+
+    public synchronized VersionSnapshot restoreVersion(int versionId) {
+        for (VersionSnapshot v : versionHistory) {
+            if (v.getVersionId() == versionId) {
+                // Snapshot current state to undo before rollback
+                undoStack.push(new UndoRedoEntry("RESTORE_VERSION", 0, getTotalLength(), pieceDirectory, "Rollback to Version #" + versionId));
+                redoStack.clear();
+
+                // Restore piece directory
+                this.pieceDirectory = v.getPieceDirectory();
+
+                history.add(new EditDescription(
+                        "RESTORE_VERSION",
+                        0,
+                        getTotalLength(),
+                        "",
+                        "PIECE_DIRECTORY",
+                        pieceDirectory.size(),
+                        pieceDirectory.size(),
+                        "Restored document to Version #" + versionId + " (" + v.getDescription() + ")"
+                ));
+                triggerAutoSave();
+                return v;
+            }
+        }
+        return null;
     }
 
     public synchronized List<EditDescription> getHistory() {

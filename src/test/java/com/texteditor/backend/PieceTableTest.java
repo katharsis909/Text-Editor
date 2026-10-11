@@ -274,4 +274,36 @@ public class PieceTableTest {
         assertEquals("123ZWV", service.getText());
         assertEquals(2, service.getPieceDirectory().size());
     }
+
+    @Test
+    @DisplayName("6. Version History: Store piece directory for each version and rollback")
+    void testVersionHistory() {
+        service.initialize("Version 1 base content.");
+        assertEquals(1, service.getVersionHistory().size());
+
+        // Make edits and create Version 2
+        service.insert(service.getTotalLength(), " Additional chapter added.");
+        com.texteditor.backend.model.VersionSnapshot v2 = service.createVersion("Added Chapter 2");
+        assertEquals(2, v2.getVersionId());
+        assertEquals(2, service.getVersionHistory().size());
+
+        // Make further edits
+        service.insert(0, "PREFACE: ");
+        service.delete(15, 5);
+        String modifiedText = service.getText();
+
+        // Restore Version 1: Replaces pieceDirectory with Version 1 descriptors snapshot
+        com.texteditor.backend.model.VersionSnapshot restoredV1 = service.restoreVersion(1);
+        assertNotNull(restoredV1);
+        assertEquals("Version 1 base content.", service.getText());
+
+        // Restore Version 2
+        com.texteditor.backend.model.VersionSnapshot restoredV2 = service.restoreVersion(2);
+        assertNotNull(restoredV2);
+        assertEquals("Version 1 base content. Additional chapter added.", service.getText());
+
+        // Buffer invariant: original and add buffers are never deleted
+        assertTrue(service.getOriginalBufferSize() > 0);
+        assertTrue(service.getAddBufferSize() > 0);
+    }
 }
