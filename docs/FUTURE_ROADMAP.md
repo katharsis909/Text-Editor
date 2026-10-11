@@ -100,3 +100,22 @@ Because neither `original_buffer` nor `add_buffer` are ever mutated or truncated
 - **Write-Ahead Log (WAL)**: Append edit descriptors to an append-only transaction journal on disk.
 - **Chunked File Blocks**: Store document on disk in fixed 64KB block files.
 - **Dirty Block Flusher**: When a piece within a 64KB block changes, mark that block dirty and asynchronously flush only that modified block to disk, rather than rewriting 500MB on every save.
+
+---
+
+## 7. Scaled Persistence: Separate Piece Files & On-Demand Loading
+
+### 7.1 The Scenario: User Connects & Disconnects
+When a user connects and requests a text file:
+1. **Load Piece Directory (Descriptors)**:
+   - Piece additions and deletions are relatively infrequent compared to read requests.
+   - The entire `pieceDirectory` (metadata containing piece numbering, piece file name/ID, start offset, and length) is small (e.g. 10,000 pieces $\times$ 16 bytes $\approx 160\text{KB}$) and is loaded into memory in a numbered HashMap / Index Table.
+2. **Pieces Stored as Separate Files on Disk**:
+   - Each piece or chunk is persisted as an independent file: `piece_<ID>.bin` or `piece_<ID>.txt`.
+   - The piece name in the directory is the exact name of the file on disk.
+3. **On-Demand Loading (Zero Unnecessary Disk I/O)**:
+   - Pieces are **not** loaded in memory upon user connection.
+   - When the user requests a virtual page or slice (e.g. chars 1,024 to 2,048), only the specific piece file(s) covering that slice are read from disk.
+   - Inactive pieces remain on disk.
+   - This provides $O(1)$ connection time regardless of document size ($10\text{MB}$ or $1\text{GB}$).
+

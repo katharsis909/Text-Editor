@@ -108,3 +108,43 @@ In single-user local applications, optimistic updates render characters immediat
    - Without Operational Transformation (OT) or Conflict-Free Replicated Data Types (CRDTs), optimistic edits lead to desynchronization and race conditions.
 2. **Deterministic Source of Truth**:
    - By awaiting the server's authoritative acknowledgment, all connected clients always reflect the identical piece descriptor order and global character coordinates.
+
+---
+
+## 7. Stack & Undo/Redo Architecture
+
+### 7.1 Immutable Buffers as the Foundation
+Because `originalBuffer` and `addBuffer` are append-only/immutable, text is **never destroyed or mutated in RAM**:
+- An operation only creates new piece descriptors and updates `pieceDirectory`.
+- Undoing an edit **never requires re-inserting or deleting text from the memory buffers**.
+- An edit state is completely and compactly described by a snapshot of the `pieceDirectory` (a list of lightweight 12-byte descriptor records) and the affected interval $[position, position + length)$.
+
+### 7.2 Add Undo & Redo
+- **Add Operation**:
+  - Appends new characters to `addBuffer`.
+  - Pushes a snapshot of `pieceDirectory` before the insert onto `undoStack`.
+  - Clears `redoStack`.
+  - Inserts the new piece descriptor into `pieceDirectory`.
+- **Add Undo**:
+  - Pops the snapshot from `undoStack`.
+  - Pushes current directory state onto `redoStack`.
+  - Restores `pieceDirectory = entry.pieceDirectorySnapshot()`.
+  - Result: The added piece is removed from the active read directory. The text remains safely in `addBuffer` without memory overhead.
+- **Add Redo**:
+  - Pops from `redoStack`.
+  - Pushes current state onto `undoStack`.
+  - Restores `pieceDirectory` with the piece re-added.
+
+### 7.3 Delete Undo & Redo (Handling Single, Complete, and Half-Half Pieces)
+- **Delete Operation**:
+  - Snapshots `pieceDirectory` before deletion onto `undoStack` with the interval $[position, position + length)$.
+  - Clears `redoStack`.
+  - Trims, splits, or drops descriptors in `pieceDirectory` (buffers remain untouched).
+- **Delete Undo**:
+  - Simply restores the exact sequence of pieces that were removed or split:
+    - *Deleting a part of a piece*: Restores the single continuous piece.
+    - *Deleting a complete piece*: Restores the piece in its exact index position.
+    - *Deleting multiple pieces half-half*: Restores the sequence of whole and half pieces in their original positions and lengths.
+- **Delete Redo**:
+  - Re-applies the deletion snapshot from `redoStack`, remembering the exact position interval $[position, position + length)$.
+

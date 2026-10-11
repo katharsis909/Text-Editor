@@ -166,4 +166,112 @@ public class PieceTableTest {
         assertEquals(currentText, newService.getText());
         assertEquals(currentText.length(), newService.getTotalLength());
     }
+
+    @Test
+    @DisplayName("5A. Add Undo & Redo: Revert added piece from directory without mutating buffers")
+    void testAddUndoRedo() {
+        service.initialize("Hello World");
+        assertEquals(1, service.getPieceDirectory().size());
+        assertEquals(0, service.getUndoStackSize());
+
+        // Insert "Beautiful " at pos 6
+        service.insert(6, "Beautiful ");
+        assertEquals("Hello Beautiful World", service.getText());
+        assertEquals(3, service.getPieceDirectory().size());
+        assertEquals(1, service.getUndoStackSize());
+        assertTrue(service.canUndo());
+        assertFalse(service.canRedo());
+
+        // Undo the insert: piece table restores to original state without shrinking buffers!
+        EditDescription undoDesc = service.undo();
+        assertEquals("Hello World", service.getText());
+        assertEquals(1, service.getPieceDirectory().size());
+        assertEquals(0, service.getUndoStackSize());
+        assertEquals(1, service.getRedoStackSize());
+        assertTrue(service.canRedo());
+        // Verify Add buffer still retains "Beautiful " (append-only integrity)
+        assertEquals(11, service.getOriginalBufferSize());
+        assertEquals(10, service.getAddBufferSize());
+
+        // Redo the insert: re-applies the pieces to directory
+        EditDescription redoDesc = service.redo();
+        assertEquals("Hello Beautiful World", service.getText());
+        assertEquals(3, service.getPieceDirectory().size());
+        assertTrue(service.canUndo());
+        assertFalse(service.canRedo());
+    }
+
+    @Test
+    @DisplayName("5B. Delete Part of Piece Undo & Redo")
+    void testDeletePartOfPieceUndoRedo() {
+        service.initialize("ABCDEFGHIJ"); // 10 chars
+        // Delete "DEF" at pos 3, len 3 -> "ABCGHIJ"
+        service.delete(3, 3);
+        assertEquals("ABCGHIJ", service.getText());
+        assertEquals(2, service.getPieceDirectory().size());
+        assertTrue(service.canUndo());
+
+        // Undo Delete: Restores the original intact piece
+        service.undo();
+        assertEquals("ABCDEFGHIJ", service.getText());
+        assertEquals(1, service.getPieceDirectory().size());
+
+        // Redo Delete: Cuts "DEF" again
+        service.redo();
+        assertEquals("ABCGHIJ", service.getText());
+        assertEquals(2, service.getPieceDirectory().size());
+    }
+
+    @Test
+    @DisplayName("5C. Delete Complete Piece Undo & Redo")
+    void testDeleteCompletePieceUndoRedo() {
+        service.initialize("AAA");
+        service.insert(3, "BBB");
+        service.insert(6, "CCC");
+        assertEquals("AAABBBCCC", service.getText());
+        assertEquals(3, service.getPieceDirectory().size());
+
+        // Delete "BBB" completely
+        service.delete(3, 3);
+        assertEquals("AAACCC", service.getText());
+        assertEquals(2, service.getPieceDirectory().size());
+
+        // Undo Delete complete piece: Restores the sequence [AAA, BBB, CCC]
+        service.undo();
+        assertEquals("AAABBBCCC", service.getText());
+        assertEquals(3, service.getPieceDirectory().size());
+
+        // Redo Delete complete piece
+        service.redo();
+        assertEquals("AAACCC", service.getText());
+        assertEquals(2, service.getPieceDirectory().size());
+    }
+
+    @Test
+    @DisplayName("5D. Delete Multiple Pieces Half-Half Undo & Redo (Sequence of pieces restoration)")
+    void testDeleteMultiplePiecesHalfHalfUndoRedo() {
+        service.initialize("12345");          // Piece 0: "12345"
+        service.insert(5, "ABCDE");          // Piece 1: "ABCDE"
+        service.insert(10, "XYZWV");         // Piece 2: "XYZWV"
+        assertEquals("12345ABCDEXYZWV", service.getText());
+        assertEquals(3, service.getPieceDirectory().size());
+
+        // Delete from pos 3 for 9 chars: spans "45" + "ABCDE" + "XY" -> leaves "123ZWV"
+        service.delete(3, 9);
+        assertEquals("123ZWV", service.getText());
+        assertEquals(2, service.getPieceDirectory().size());
+
+        // Undo Delete: Restores the exact sequence of whole and half pieces originally present
+        service.undo();
+        assertEquals("12345ABCDEXYZWV", service.getText());
+        assertEquals(3, service.getPieceDirectory().size());
+        assertEquals("12345", service.getSlice(0, 5));
+        assertEquals("ABCDE", service.getSlice(5, 5));
+        assertEquals("XYZWV", service.getSlice(10, 5));
+
+        // Redo Delete: Re-cuts the half-half range
+        service.redo();
+        assertEquals("123ZWV", service.getText());
+        assertEquals(2, service.getPieceDirectory().size());
+    }
 }

@@ -3,6 +3,7 @@ package com.texteditor.backend.service;
 import com.texteditor.backend.model.BufferType;
 import com.texteditor.backend.model.EditDescription;
 import com.texteditor.backend.model.Piece;
+import com.texteditor.backend.model.UndoRedoEntry;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -10,7 +11,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 
 @Service
@@ -27,6 +30,10 @@ public class PieceTableService {
 
     // Log of changes made
     private List<EditDescription> history = new ArrayList<>();
+
+    // Undo & Redo Stacks (Descriptors snapshots & interval tracking)
+    private Deque<UndoRedoEntry> undoStack = new ArrayDeque<>();
+    private Deque<UndoRedoEntry> redoStack = new ArrayDeque<>();
 
     public PieceTableService() {}
 
@@ -60,6 +67,8 @@ public class PieceTableService {
         this.addBuffer = new StringBuilder();
         this.pieceDirectory = new ArrayList<>();
         this.history = new ArrayList<>();
+        this.undoStack.clear();
+        this.redoStack.clear();
 
         if (this.originalBuffer.length() > 0) {
             this.pieceDirectory.add(new Piece(BufferType.ORIGINAL, 0, this.originalBuffer.length()));
@@ -199,6 +208,10 @@ public class PieceTableService {
         int totalLen = getTotalLength();
         position = Math.max(0, Math.min(totalLen, position));
 
+        // Snapshot current pieceDirectory state before applying insert
+        undoStack.push(new UndoRedoEntry("INSERT", position, text.length(), pieceDirectory, "Insert at " + position));
+        redoStack.clear();
+
         // 1. Append to Add Buffer (Append-Only)
         int addStart = addBuffer.length();
         addBuffer.append(text);
@@ -276,6 +289,10 @@ public class PieceTableService {
         if (length == 0 || pieceDirectory.isEmpty()) {
             return new EditDescription("DELETE", position, 0, "", "NONE", pieceDirectory.size(), pieceDirectory.size(), "No-op delete");
         }
+
+        // Snapshot current pieceDirectory state before applying delete
+        undoStack.push(new UndoRedoEntry("DELETE", position, length, pieceDirectory, "Delete at " + position + " len " + length));
+        redoStack.clear();
 
         int delStart = position;
         int delEnd = position + length;
@@ -382,6 +399,110 @@ public class PieceTableService {
         String content = Files.readString(Path.of(filePath), StandardCharsets.UTF_8);
         initialize(content);
         return "Loaded " + content.length() + " characters from " + filePath + " into piece table.";
+    }
+
+    /**
+     * UNDO:
+     * - Pops previous piece directory snapshot from undoStack.
+     * - Pushes current piece directory state onto redoStack with interval info.
+     * - Restores previous pieceDirectory without touching originalBuffer or addBuffer.
+     * - For 'add undo': simply removes the pieces that were added.
+     * - For 'delete undo': restores the sequence of whole/half pieces that were removed.
+     */
+    public synchronized EditDescription undo() {
+        if (undoStack.isEmpty()) {
+            return new EditDescription("UNDO", 0, 0, "", "NONE", pieceDirectory.size(), pieceDirectory.size(), "Nothing to undo");
+        }
+
+        UndoRedoEntry entry = undoStack.pop();
+        int piecesBefore = pieceDirectory.size();
+
+        // Push current state onto redoStack
+        redoStack.push(new UndoRedoEntry(
+                entry.operationType(),
+                entry.position(),
+                entry.length(),
+                pieceDirectory,
+                "Redo " + entry.operationType() + " at " + entry.position()
+        ));
+
+        // Restore previous piece directory snapshot
+        this.pieceDirectory = entry.pieceDirectorySnapshot();
+
+        String details = "Reverted " + entry.operationType() + " at position " + entry.position() +
+                " (interval len " + entry.length() + "). Piece directory restored from undo stack.";
+
+        EditDescription desc = new EditDescription(
+                "UNDO_" + entry.operationType(),
+                entry.position(),
+                entry.length(),
+                "",
+                "PIECE_DIRECTORY",
+                piecesBefore,
+                pieceDirectory.size(),
+                details
+        );
+        history.add(desc);
+        return desc;
+    }
+
+    /**
+     * REDO:
+     * - Pops redo state from redoStack.
+     * - Pushes current state onto undoStack.
+     * - Restores redo pieceDirectory snapshot.
+     */
+    public synchronized EditDescription redo() {
+        if (redoStack.isEmpty()) {
+            return new EditDescription("REDO", 0, 0, "", "NONE", pieceDirectory.size(), pieceDirectory.size(), "Nothing to redo");
+        }
+
+        UndoRedoEntry entry = redoStack.pop();
+        int piecesBefore = pieceDirectory.size();
+
+        // Push current state onto undoStack
+        undoStack.push(new UndoRedoEntry(
+                entry.operationType(),
+                entry.position(),
+                entry.length(),
+                pieceDirectory,
+                "Undo " + entry.operationType() + " at " + entry.position()
+        ));
+
+        // Restore target piece directory snapshot
+        this.pieceDirectory = entry.pieceDirectorySnapshot();
+
+        String details = "Reapplied " + entry.operationType() + " at position " + entry.position() +
+                " (interval len " + entry.length() + "). Piece directory restored from redo stack.";
+
+        EditDescription desc = new EditDescription(
+                "REDO_" + entry.operationType(),
+                entry.position(),
+                entry.length(),
+                "",
+                "PIECE_DIRECTORY",
+                piecesBefore,
+                pieceDirectory.size(),
+                details
+        );
+        history.add(desc);
+        return desc;
+    }
+
+    public synchronized boolean canUndo() {
+        return !undoStack.isEmpty();
+    }
+
+    public synchronized boolean canRedo() {
+        return !redoStack.isEmpty();
+    }
+
+    public synchronized int getUndoStackSize() {
+        return undoStack.size();
+    }
+
+    public synchronized int getRedoStackSize() {
+        return redoStack.size();
     }
 
     public synchronized List<Piece> getPieceDirectory() {

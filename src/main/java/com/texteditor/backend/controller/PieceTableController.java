@@ -70,6 +70,30 @@ public class PieceTableController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/undo")
+    public ResponseEntity<Map<String, Object>> undo() {
+        EditDescription desc = service.undo();
+        Map<String, Object> response = new HashMap<>();
+        response.put("description", desc);
+        response.put("newTotalLength", service.getTotalLength());
+        response.put("piecesCount", service.getPieceDirectory().size());
+        response.put("canUndo", service.canUndo());
+        response.put("canRedo", service.canRedo());
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/redo")
+    public ResponseEntity<Map<String, Object>> redo() {
+        EditDescription desc = service.redo();
+        Map<String, Object> response = new HashMap<>();
+        response.put("description", desc);
+        response.put("newTotalLength", service.getTotalLength());
+        response.put("piecesCount", service.getPieceDirectory().size());
+        response.put("canUndo", service.canUndo());
+        response.put("canRedo", service.canRedo());
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/text")
     public ResponseEntity<Map<String, Object>> getText() {
         Map<String, Object> response = new HashMap<>();
@@ -87,6 +111,10 @@ public class PieceTableController {
         response.put("addBufferSize", service.getAddBufferSize());
         response.put("pieceDirectory", service.getPieceDirectory());
         response.put("history", service.getHistory());
+        response.put("undoStackSize", service.getUndoStackSize());
+        response.put("redoStackSize", service.getRedoStackSize());
+        response.put("canUndo", service.canUndo());
+        response.put("canRedo", service.canRedo());
         return ResponseEntity.ok(response);
     }
 

@@ -496,13 +496,15 @@
     <div class="controls-bar" style="border-color: #1e3a5f; background: #0c1424;">
       <div class="control-group" style="flex: 1;">
         <span style="font-weight: 600; color: var(--accent);">Edit:</span>
-        <input type="text" id="inputInsertText" placeholder="Enter text to insert in middle..." style="flex: 1; max-width: 320px;" value=" >>> [INSERTION] <<< ">
-        <button id="btnInsert" class="btn-add">&plus; Insert at Cursor</button>
-        <button id="btnDeleteSelection" class="btn-delete" disabled>&times; Delete Selection (0 chars)</button>
+        <input type="text" id="inputInsertText" placeholder="Enter text to insert in middle..." style="flex: 1; max-width: 260px;" value=" >>> [INSERTION] <<< ">
+        <button id="btnInsert" class="btn-add">&plus; Insert</button>
+        <button id="btnDeleteSelection" class="btn-delete" disabled>&times; Delete (0 chars)</button>
+        <button id="btnUndo" style="background: #1e293b; border: 1px solid var(--border); color: #e2e8f0; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer;">↶ Undo</button>
+        <button id="btnRedo" style="background: #1e293b; border: 1px solid var(--border); color: #e2e8f0; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer;">↷ Redo</button>
       </div>
       <div class="control-group">
         <span style="font-size: 11px; color: var(--muted);">
-          <b>Selection Speed:</b> Shift+Arrow (fine/accel) &bull; <span style="color:var(--accent);">Shift+Alt+Arrow (&times;15)</span> &bull; <span style="color:#38bdf8;">Shift+Ctrl/Cmd (&times;100)</span> &bull; Shift+PgUp/PgDn (&plusmn;500)
+          <b>Shortcuts:</b> Ctrl/Cmd+Z (Undo) &bull; Ctrl/Cmd+Shift+Z or Ctrl+Y (Redo) &bull; Shift+Arrow (Select)
         </span>
       </div>
     </div>
@@ -811,6 +813,76 @@
         updateSelectionUI();
       } catch (err) {
         updateActivityLog(`❌ [Delete Failed]: ${err.message}`);
+      } finally {
+        isServerBusy = false;
+      }
+    }
+
+    async function apiUndo() {
+      if (isServerBusy) return;
+      isServerBusy = true;
+      updateActivityLog(`⏳ [Server Sync] Undoing last operation...`);
+
+      try {
+        const res = await fetch(`${BACKEND_URL}/undo`, { method: "POST" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+
+        state.totalChars = data.newTotalLength;
+        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount}`;
+
+        // Clear page cache to re-read authoritative state
+        pageCache.clear();
+
+        const desc = data.description || {};
+        const pos = Math.min(state.totalChars, desc.position || 0);
+        const targetPage = Math.floor(pos / PAGE_SIZE);
+
+        await apiFetchPage(targetPage);
+        state.selectionAnchor = pos;
+        state.selectionFocus = pos;
+
+        updateActivityLog(`↶ [Undo Succeeded]: ${desc.details || 'Reverted operation'} | Total chars: ${data.newTotalLength}`);
+        clampScroll();
+        render();
+        updateSelectionUI();
+      } catch (err) {
+        updateActivityLog(`❌ [Undo Failed]: ${err.message}`);
+      } finally {
+        isServerBusy = false;
+      }
+    }
+
+    async function apiRedo() {
+      if (isServerBusy) return;
+      isServerBusy = true;
+      updateActivityLog(`⏳ [Server Sync] Redoing operation...`);
+
+      try {
+        const res = await fetch(`${BACKEND_URL}/redo`, { method: "POST" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+
+        state.totalChars = data.newTotalLength;
+        statDocumentInfo.textContent = `Document: ${state.totalChars.toLocaleString()} chars | Pieces: ${data.piecesCount}`;
+
+        // Clear page cache to re-read authoritative state
+        pageCache.clear();
+
+        const desc = data.description || {};
+        const pos = Math.min(state.totalChars, desc.position || 0);
+        const targetPage = Math.floor(pos / PAGE_SIZE);
+
+        await apiFetchPage(targetPage);
+        state.selectionAnchor = pos;
+        state.selectionFocus = pos;
+
+        updateActivityLog(`↷ [Redo Succeeded]: ${desc.details || 'Reapplied operation'} | Total chars: ${data.newTotalLength}`);
+        clampScroll();
+        render();
+        updateSelectionUI();
+      } catch (err) {
+        updateActivityLog(`❌ [Redo Failed]: ${err.message}`);
       } finally {
         isServerBusy = false;
       }
@@ -1329,6 +1401,20 @@
         return;
       }
 
+      // Undo shortcut: Ctrl+Z / Cmd+Z (without Shift)
+      if (isCtrlOrCmd && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        apiUndo();
+        return;
+      }
+
+      // Redo shortcut: Ctrl+Shift+Z / Cmd+Shift+Z or Ctrl+Y / Cmd+Y
+      if ((isCtrlOrCmd && e.shiftKey && (e.key === 'z' || e.key === 'Z')) || (isCtrlOrCmd && (e.key === 'y' || e.key === 'Y'))) {
+        e.preventDefault();
+        apiRedo();
+        return;
+      }
+
       // If editor wrapper is focused
       if (document.activeElement === editorWrapper) {
         // Multiplier for selection speed based on modifiers
@@ -1536,6 +1622,14 @@
 
     btnDeleteSelection.addEventListener('click', () => {
       apiDeleteSelection();
+    });
+
+    document.getElementById('btnUndo').addEventListener('click', () => {
+      apiUndo();
+    });
+
+    document.getElementById('btnRedo').addEventListener('click', () => {
+      apiRedo();
     });
 
     function scrollToPage(pageIdx) {
