@@ -501,7 +501,9 @@
         <button id="btnDeleteSelection" class="btn-delete" disabled>&times; Delete Selection (0 chars)</button>
       </div>
       <div class="control-group">
-        <span style="font-size: 11px; color: var(--muted);">Direct typing inserts &bull; Backspace deletes selection!</span>
+        <span style="font-size: 11px; color: var(--muted);">
+          <b>Selection Speed:</b> Shift+Arrow (fine/accel) &bull; <span style="color:var(--accent);">Shift+Alt+Arrow (&times;15)</span> &bull; <span style="color:#38bdf8;">Shift+Ctrl/Cmd (&times;100)</span> &bull; Shift+PgUp/PgDn (&plusmn;500)
+        </span>
       </div>
     </div>
 
@@ -1329,10 +1331,42 @@
 
       // If editor wrapper is focused
       if (document.activeElement === editorWrapper) {
+        // Multiplier for selection speed based on modifiers
+        // Regular Shift + Arrow = 1 char (or accelerated if held down)
+        // Shift + Alt + Arrow = 15 chars (word/subchunk jump)
+        // Shift + Ctrl/Cmd + Arrow = 100 chars (fast chunk jump)
+        let step = 1;
+        if (isCtrlOrCmd) {
+          step = 100;
+        } else if (e.altKey) {
+          step = 15;
+        } else if (e.repeat) {
+          // If user holds down Shift + Arrow, accelerate dynamically!
+          step = 5;
+        }
+
+        // Shift + PageDown / Shift + PageUp (large jump selection: 500 chars)
+        if (e.shiftKey && e.key === 'PageDown') {
+          e.preventDefault();
+          state.selectionFocus = Math.min(state.totalChars, state.selectionFocus + 500);
+          ensureIndexVisible(state.selectionFocus);
+          updateSelectionUI();
+          render();
+          return;
+        }
+        if (e.shiftKey && e.key === 'PageUp') {
+          e.preventDefault();
+          state.selectionFocus = Math.max(0, state.selectionFocus - 500);
+          ensureIndexVisible(state.selectionFocus);
+          updateSelectionUI();
+          render();
+          return;
+        }
+
         // Shift + Arrow Right (expand selection right)
         if (e.shiftKey && e.key === 'ArrowRight') {
           e.preventDefault();
-          state.selectionFocus = Math.min(state.totalChars, state.selectionFocus + 1);
+          state.selectionFocus = Math.min(state.totalChars, state.selectionFocus + step);
           ensureIndexVisible(state.selectionFocus);
           updateSelectionUI();
           render();
@@ -1341,7 +1375,7 @@
         // Shift + Arrow Left (expand selection left)
         if (e.shiftKey && e.key === 'ArrowLeft') {
           e.preventDefault();
-          state.selectionFocus = Math.max(0, state.selectionFocus - 1);
+          state.selectionFocus = Math.max(0, state.selectionFocus - step);
           ensureIndexVisible(state.selectionFocus);
           updateSelectionUI();
           render();
@@ -1371,7 +1405,7 @@
         if (!e.shiftKey && e.key === 'ArrowRight') {
           e.preventDefault();
           const { end } = getSelectionRange();
-          const next = Math.min(state.totalChars, Math.max(end, state.selectionFocus + 1));
+          const next = Math.min(state.totalChars, Math.max(end, state.selectionFocus + (isCtrlOrCmd ? 50 : (e.altKey ? 10 : 1))));
           state.selectionAnchor = state.selectionFocus = next;
           ensureIndexVisible(next);
           updateSelectionUI();
@@ -1382,7 +1416,7 @@
         if (!e.shiftKey && e.key === 'ArrowLeft') {
           e.preventDefault();
           const { start } = getSelectionRange();
-          const prev = Math.max(0, Math.min(start, state.selectionFocus - 1));
+          const prev = Math.max(0, Math.min(start, state.selectionFocus - (isCtrlOrCmd ? 50 : (e.altKey ? 10 : 1))));
           state.selectionAnchor = state.selectionFocus = prev;
           ensureIndexVisible(prev);
           updateSelectionUI();
