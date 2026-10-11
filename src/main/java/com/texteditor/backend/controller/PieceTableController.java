@@ -59,11 +59,15 @@ public class PieceTableController {
     }
 
     @PostMapping("/delete")
-    public ResponseEntity<EditDescription> delete(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> delete(@RequestBody Map<String, Object> body) {
         int position = (int) body.getOrDefault("position", 0);
         int length = (int) body.getOrDefault("length", 0);
         EditDescription desc = service.delete(position, length);
-        return ResponseEntity.ok(desc);
+        Map<String, Object> response = new HashMap<>();
+        response.put("description", desc);
+        response.put("newTotalLength", service.getTotalLength());
+        response.put("piecesCount", service.getPieceDirectory().size());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/text")
