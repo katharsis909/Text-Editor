@@ -590,73 +590,103 @@ public class PieceTableService {
         return new ArrayList<>(pieceDirectory);
     }
 
+    public static final int RECENT_FULL_WINDOW = 5;
+
     /**
-     * VERSION HISTORY (5-Interval Checkpoints + Incremental Piece Diffs):
-     * - Version 1 and every 5th version (5, 10, 15, 20...) stores all pieces and full buffers (CHECKPOINT).
-     * - Intermediate versions inside each 5 (2, 3, 4; 6, 7, 8, 9...) store only the changed piece
-     *   intervals/diffs relative to each version increment, referring directly to pieces or parts of pieces
-     *   without LCS, reducing memory and disk usage by 95%+.
+     * VERSION HISTORY (Recent Sliding Window Pure Full Storage + 5-Interval Checkpoints + Compacted Deltas):
+     * - The last 5 versions (e.g. if current is 17: 17, 16, 15, 14, 13, 12) are stored PURE with full
+     *   piece directory and buffers, with ZERO diff calculation!
+     * - Every 5th version (1, 5, 10, 15, 20...) is a permanent full CHECKPOINT.
+     * - Older intermediate versions (< current - 5 and not a 5th interval) are compacted to lightweight
+     *   piece diffs (DELTA) without LCS, saving 95%+ disk/memory space.
      */
     public synchronized VersionSnapshot createVersion(String description) {
         int nextVersionId = versionHistory.size() + 1;
         String desc = (description != null && !description.isBlank()) ? description : "Version " + nextVersionId;
 
-        // Checkpoint rule: Version 1 and every 5th version (5, 10, 15, 20...)
-        boolean isCheckpoint = (nextVersionId == 1 || nextVersionId % 5 == 0);
+        // The newly created version is in the recent window:
+        // Stored PURE with full pieceDirectory and buffers. ZERO diff calculation!
+        VersionSnapshot snapshot = new VersionSnapshot(
+                nextVersionId,
+                java.time.Instant.now().toString(),
+                desc,
+                getTotalLength(),
+                pieceDirectory.size(),
+                "CHECKPOINT",
+                nextVersionId,
+                pieceDirectory,
+                originalBuffer.toString(),
+                addBuffer.toString(),
+                java.util.Collections.emptyList(),
+                null,
+                (nextVersionId == 1 || nextVersionId % 5 == 0)
+                        ? "Full Checkpoint (Interval #" + (nextVersionId == 1 ? 1 : nextVersionId / 5) + ")"
+                        : "Full Snapshot (Recent v" + nextVersionId + ")"
+        );
 
-        VersionSnapshot snapshot;
-        if (isCheckpoint) {
-            snapshot = new VersionSnapshot(
-                    nextVersionId,
-                    java.time.Instant.now().toString(),
-                    desc,
-                    getTotalLength(),
-                    pieceDirectory.size(),
-                    "CHECKPOINT",
-                    nextVersionId,
-                    pieceDirectory,
-                    originalBuffer.toString(),
-                    addBuffer.toString(),
-                    java.util.Collections.emptyList(),
-                    null,
-                    "Full Checkpoint (Interval #" + (nextVersionId == 1 ? 1 : nextVersionId / 5) + ")"
-            );
-        } else {
-            // Delta snapshot: store piece diffs for this version increment from previous version (v - 1)
-            int baseId = nextVersionId - 1;
-            List<Piece> prevPieces = resolvePieceDirectoryForVersion(baseId);
-            List<PieceDiffChunk> diffChunks = PieceDiffChunk.computeDiff(prevPieces, this.pieceDirectory);
+        versionHistory.add(snapshot);
 
-            int prevAddLen = resolveAddBufferForVersion(baseId).length();
-            String addedText = null;
-            if (addBuffer.length() > prevAddLen) {
-                addedText = addBuffer.substring(prevAddLen);
+        // Compact older versions that fall outside the recent window (older than nextVersionId - 5).
+        // 5-interval checkpoints (1, 5, 10, 15...) are permanent and NEVER compacted.
+        compactOlderVersions();
+
+        persistVersionsToDisk();
+        return snapshot;
+    }
+
+    /**
+     * Compacts older versions outside the recent 5-version window:
+     * - Versions in recent window (from current - 5 to current) are ALWAYS kept pure (CHECKPOINT).
+     * - Every 5th version (1, 5, 10, 15...) is a permanent full CHECKPOINT.
+     * - Older intermediate versions (< current - 5 and not a 5th interval) are compacted
+     *   to lightweight DELTA diffs in O(pieces) without LCS, discarding full piece arrays & buffers.
+     */
+    private void compactOlderVersions() {
+        int currentVersionId = versionHistory.size();
+        int windowStart = Math.max(1, currentVersionId - RECENT_FULL_WINDOW);
+
+        for (int i = 0; i < versionHistory.size(); i++) {
+            VersionSnapshot v = versionHistory.get(i);
+            int vId = v.getVersionId();
+
+            // Permanent checkpoints: v1 and every 5th version (5, 10, 15, 20...)
+            boolean isIntervalCheckpoint = (vId == 1 || vId % 5 == 0);
+
+            // Recent window: e.g. if current is 17, versions 12, 13, 14, 15, 16, 17 are kept full
+            boolean isRecent = (vId >= windowStart);
+
+            // Skip if it's already a delta, or if it should stay a full checkpoint
+            if (v.isDelta() || isIntervalCheckpoint || isRecent) {
+                continue;
             }
 
-            String summary = "Delta from v" + baseId + " (" + diffChunks.size() + " piece diff" +
+            // Version vId has fallen out of the recent window and is not an interval checkpoint.
+            // Compact it to an incremental DELTA relative to (vId - 1)
+            int baseId = vId - 1;
+            List<Piece> prevPieces = resolvePieceDirectoryForVersion(baseId);
+            List<Piece> targetPieces = (v.getPieceDirectory() != null)
+                    ? v.getPieceDirectory()
+                    : resolvePieceDirectoryForVersion(vId);
+
+            List<PieceDiffChunk> diffChunks = PieceDiffChunk.computeDiff(prevPieces, targetPieces);
+
+            int prevAddLen = resolveAddBufferForVersion(baseId).length();
+            String currentAdd = (v.getAddBufferContent() != null)
+                    ? v.getAddBufferContent()
+                    : resolveAddBufferForVersion(vId);
+
+            String addedText = null;
+            if (currentAdd != null && currentAdd.length() > prevAddLen) {
+                addedText = currentAdd.substring(prevAddLen);
+            }
+
+            String summary = "Compacted Delta from v" + baseId + " (" + diffChunks.size() + " piece diff" +
                     (diffChunks.size() == 1 ? "" : "s") +
                     (addedText != null && !addedText.isEmpty() ? ", +" + addedText.length() + " chars" : "") + ")";
 
-            snapshot = new VersionSnapshot(
-                    nextVersionId,
-                    java.time.Instant.now().toString(),
-                    desc,
-                    getTotalLength(),
-                    pieceDirectory.size(),
-                    "DELTA",
-                    baseId,
-                    null, // Not storing full pieceDirectory on disk -> 95%+ space savings!
-                    null, // Not storing full originalBuffer on disk!
-                    null, // Not storing full addBuffer on disk!
-                    diffChunks,
-                    addedText,
-                    summary
-            );
+            VersionSnapshot compacted = v.asDelta(baseId, diffChunks, addedText, summary);
+            versionHistory.set(i, compacted);
         }
-
-        versionHistory.add(snapshot);
-        persistVersionsToDisk();
-        return snapshot;
     }
 
     public synchronized List<VersionSnapshot> getVersionHistory() {
@@ -732,8 +762,12 @@ public class PieceTableService {
         List<Piece> currentPieces = new ArrayList<>(checkpoint.getPieceDirectory());
         for (int i = checkpoint.getVersionId() + 1; i <= versionId; i++) {
             VersionSnapshot step = findVersionById(i);
-            if (step != null && step.getDiffChunks() != null && !step.getDiffChunks().isEmpty()) {
-                currentPieces = PieceDiffChunk.applyDiff(currentPieces, step.getDiffChunks());
+            if (step != null) {
+                if (step.isCheckpoint() && step.getPieceDirectory() != null) {
+                    currentPieces = new ArrayList<>(step.getPieceDirectory());
+                } else if (step.getDiffChunks() != null && !step.getDiffChunks().isEmpty()) {
+                    currentPieces = PieceDiffChunk.applyDiff(currentPieces, step.getDiffChunks());
+                }
             }
         }
         return currentPieces;
@@ -762,8 +796,12 @@ public class PieceTableService {
 
         for (int i = checkpoint.getVersionId() + 1; i <= versionId; i++) {
             VersionSnapshot step = findVersionById(i);
-            if (step != null && step.getAddedText() != null) {
-                sb.append(step.getAddedText());
+            if (step != null) {
+                if (step.isCheckpoint() && step.getAddBufferContent() != null) {
+                    sb = new StringBuilder(step.getAddBufferContent());
+                } else if (step.getAddedText() != null) {
+                    sb.append(step.getAddedText());
+                }
             }
         }
         return sb.toString();

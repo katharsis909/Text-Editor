@@ -217,4 +217,27 @@ public class VersionSnapshot {
         }
         return "";
     }
+
+    /**
+     * Compacts this checkpoint version into a lightweight DELTA snapshot
+     * relative to baseVersionId, discarding full pieceDirectory and full buffers
+     * to save 95%+ disk and memory space.
+     */
+    public VersionSnapshot asDelta(int baseVersionId, List<PieceDiffChunk> diffChunks, String addedText, String summary) {
+        return new VersionSnapshot(
+                this.versionId,
+                this.timestamp,
+                this.description,
+                this.totalLength,
+                this.piecesCount,
+                "DELTA",
+                baseVersionId,
+                null,
+                null,
+                null,
+                diffChunks,
+                addedText,
+                summary
+        );
+    }
 }

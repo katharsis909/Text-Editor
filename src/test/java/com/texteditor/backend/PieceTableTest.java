@@ -309,10 +309,10 @@ public class PieceTableTest {
     }
 
     @Test
-    @DisplayName("7. 5-Interval Checkpoints & Delta Diffs: Verification of 95%+ space-saving and lossless rollback")
+    @DisplayName("7. Sliding Window & 5-Interval Checkpoints: Recent 5 versions stored pure without diff, older versions compacted to deltas")
     void testFiveIntervalCheckpointsAndDeltaRollback() {
         service.initialize("V1 Base.");
-        // Version 1 is CHECKPOINT
+        // Version 1 is permanent CHECKPOINT
         VersionSnapshot v1 = service.getVersionHistory().get(0);
         assertTrue(v1.isCheckpoint());
         assertEquals("CHECKPOINT", v1.getSnapshotType());
@@ -323,40 +323,45 @@ public class PieceTableTest {
             service.insert(service.getTotalLength(), " [v" + i + "]");
             VersionSnapshot v = service.createVersion("Milestone " + i);
             assertEquals(i, v.getVersionId());
-
-            if (i % 5 == 0) {
-                // Version 5, 10 are CHECKPOINTS
-                assertTrue(v.isCheckpoint(), "Version " + i + " must be a CHECKPOINT");
-                assertEquals("CHECKPOINT", v.getSnapshotType());
-                assertNotNull(v.getPieceDirectory(), "Checkpoint must store full pieceDirectory");
-                assertNotNull(v.getOriginalBufferContent());
-            } else {
-                // Versions 2, 3, 4, 6, 7, 8, 9, 11, 12 are DELTAS
-                assertTrue(v.isDelta(), "Version " + i + " must be a DELTA");
-                assertEquals("DELTA", v.getSnapshotType());
-                assertNull(v.getPieceDirectory(), "Delta must NOT store full pieceDirectory (space saving)");
-                assertNull(v.getOriginalBufferContent());
-                assertNotNull(v.getDiffChunks(), "Delta must store diff chunks");
-                assertFalse(v.getDiffChunks().isEmpty(), "Delta must have at least one diff chunk");
-            }
+            // Immediately upon creation, any new version is inside recent window -> pure CHECKPOINT (no diff calc)
+            assertTrue(v.isCheckpoint(), "Newly created version " + i + " must be pure CHECKPOINT without diff calc");
         }
 
         assertEquals(12, service.getVersionHistory().size());
 
+        // At total = 12, recent window is [12 - 5 .. 12] = [7 .. 12]
+        // Versions 7, 8, 9, 10, 11, 12 must be CHECKPOINTS
+        for (int i = 7; i <= 12; i++) {
+            VersionSnapshot v = service.getVersionHistory().get(i - 1);
+            assertTrue(v.isCheckpoint(), "Version " + i + " is in recent window [7..12] and must be full CHECKPOINT");
+            assertNotNull(v.getPieceDirectory(), "Recent version " + i + " must have full pieceDirectory");
+        }
+
+        // Permanent interval checkpoints: v1, v5, v10 must always be CHECKPOINTS
+        assertTrue(service.getVersionHistory().get(0).isCheckpoint(), "v1 is permanent checkpoint");
+        assertTrue(service.getVersionHistory().get(4).isCheckpoint(), "v5 is permanent interval checkpoint");
+        assertTrue(service.getVersionHistory().get(9).isCheckpoint(), "v10 is permanent interval checkpoint");
+
+        // Older versions outside recent window (< 7) and not interval checkpoints: v2, v3, v4, v6 must be DELTAS
+        assertTrue(service.getVersionHistory().get(1).isDelta(), "v2 must be compacted DELTA");
+        assertTrue(service.getVersionHistory().get(2).isDelta(), "v3 must be compacted DELTA");
+        assertTrue(service.getVersionHistory().get(3).isDelta(), "v4 must be compacted DELTA");
+        assertTrue(service.getVersionHistory().get(5).isDelta(), "v6 must be compacted DELTA");
+
         // Text at v12
         assertTrue(service.getText().contains("[v12]"));
 
-        // Rollback to v3 (a DELTA based on v1)
+        // Rollback to v3 (a DELTA)
         VersionSnapshot r3 = service.restoreVersion(3);
         assertNotNull(r3);
         assertEquals("V1 Base. [v2] [v3]", service.getText());
 
-        // Rollback to v5 (a CHECKPOINT)
+        // Rollback to v5 (a permanent CHECKPOINT)
         VersionSnapshot r5 = service.restoreVersion(5);
         assertNotNull(r5);
         assertEquals("V1 Base. [v2] [v3] [v4] [v5]", service.getText());
 
-        // Rollback to v8 (a DELTA based on v5)
+        // Rollback to v8 (a recent CHECKPOINT)
         VersionSnapshot r8 = service.restoreVersion(8);
         assertNotNull(r8);
         assertEquals("V1 Base. [v2] [v3] [v4] [v5] [v6] [v7] [v8]", service.getText());
@@ -371,14 +376,14 @@ public class PieceTableTest {
         assertNotNull(r1);
         assertEquals("V1 Base.", service.getText());
 
-        // Rollback forward to v12 (a DELTA based on v10)
+        // Rollback forward to v12
         VersionSnapshot r12 = service.restoreVersion(12);
         assertNotNull(r12);
         assertTrue(service.getText().endsWith("[v12]"));
     }
 
     @Test
-    @DisplayName("8. PieceDiffChunk: LCS diff computation and patch reconstruction")
+    @DisplayName("8. PieceDiffChunk: Fast linear diff computation and patch reconstruction")
     void testPieceDiffChunkComputation() {
         Piece p1 = new Piece(BufferType.ORIGINAL, 0, 10);
         Piece p2 = new Piece(BufferType.ADD, 0, 5);
@@ -405,7 +410,7 @@ public class PieceTableTest {
     }
 
     @Test
-    @DisplayName("9. Disk Persistence: Serializing and rehydrating 5-interval checkpoints & deltas from companion JSON")
+    @DisplayName("9. Disk Persistence: Serializing and rehydrating checkpoints & deltas from companion JSON")
     void testDiskPersistenceWithCheckpointsAndDeltas() throws IOException {
         String testDocPath = "target/test_interval_doc.txt";
         File f = new File(testDocPath);
@@ -416,7 +421,7 @@ public class PieceTableTest {
         service.initialize("Initial doc content.");
         service.saveToDiskPlan1(testDocPath);
 
-        for (int i = 2; i <= 10; i++) {
+        for (int i = 2; i <= 12; i++) {
             service.insert(service.getTotalLength(), " [part " + i + "]");
             service.createVersion("Version " + i);
         }
@@ -432,16 +437,18 @@ public class PieceTableTest {
         freshService.loadFromDiskPlan1(testDocPath);
         freshService.loadVersionsFromDisk();
 
-        assertEquals(10, freshService.getVersionHistory().size());
+        assertEquals(12, freshService.getVersionHistory().size());
 
-        // Checkpoint versions: v1, v5, v10
+        // Checkpoint versions: v1, v5, v10, and recent versions 7..12
         assertTrue(freshService.getVersionHistory().get(0).isCheckpoint());
         assertTrue(freshService.getVersionHistory().get(4).isCheckpoint());
         assertTrue(freshService.getVersionHistory().get(9).isCheckpoint());
+        assertTrue(freshService.getVersionHistory().get(11).isCheckpoint());
 
-        // Delta versions: v2, v3, v4, v6, v7, v8, v9
+        // Delta versions: older versions outside window (v2, v3, v4, v6)
         assertTrue(freshService.getVersionHistory().get(1).isDelta());
         assertTrue(freshService.getVersionHistory().get(2).isDelta());
+        assertTrue(freshService.getVersionHistory().get(3).isDelta());
         assertTrue(freshService.getVersionHistory().get(5).isDelta());
 
         // Test rollback on the newly loaded service instance
@@ -463,79 +470,75 @@ public class PieceTableTest {
     }
 
     @Test
-    @DisplayName("10. Incremental Version Diffs: Each intermediate version stores diff from previous version increment, checkpoints at every 5th")
-    void testIncrementalPieceDiffsChainAndIntervalCheckpoints() {
-        service.initialize("BaseDocument"); // v1 Checkpoint
+    @DisplayName("10. User Scenario: When current version is 17, versions 12 to 17 are pure checkpoints without diff calc")
+    void testUserScenarioCurrent17Keeps12To17Pure() {
+        service.initialize("V1 Base Content");
         assertEquals(1, service.getVersionHistory().size());
-        assertEquals("CHECKPOINT", service.getVersionHistory().get(0).getSnapshotType());
 
-        // Create v2 (Delta from v1)
-        service.insert(service.getTotalLength(), " - Add 1");
-        VersionSnapshot v2 = service.createVersion("Step 1");
-        assertEquals(2, v2.getVersionId());
-        assertEquals(1, v2.getBaseVersionId()); // Delta based on v1
-        assertEquals("DELTA", v2.getSnapshotType());
+        // Create versions 2 to 17
+        for (int i = 2; i <= 17; i++) {
+            service.insert(service.getTotalLength(), " [v" + i + "]");
+            VersionSnapshot created = service.createVersion("Version " + i);
+            assertEquals(i, created.getVersionId());
+            // ZERO diff calc on creation: always created as full CHECKPOINT
+            assertTrue(created.isCheckpoint());
+        }
 
-        // Create v3 (Delta from v2)
-        service.insert(service.getTotalLength(), " - Add 2");
-        VersionSnapshot v3 = service.createVersion("Step 2");
-        assertEquals(3, v3.getVersionId());
-        assertEquals(2, v3.getBaseVersionId()); // Incremental diff from v2
-        assertEquals("DELTA", v3.getSnapshotType());
+        assertEquals(17, service.getVersionHistory().size());
 
-        // Create v4 (Delta from v3 with a delete operation)
-        service.delete(0, 4); // Remove "Base" -> "Document - Add 1 - Add 2"
-        VersionSnapshot v4 = service.createVersion("Step 3 Delete");
-        assertEquals(4, v4.getVersionId());
-        assertEquals(3, v4.getBaseVersionId()); // Incremental diff from v3
-        assertEquals("DELTA", v4.getSnapshotType());
+        // Requirement: "current 17 v hai to 16,15,14,,12 ttk rkho (pure full, no diff calc)"
+        for (int i = 12; i <= 17; i++) {
+            VersionSnapshot v = service.getVersionHistory().get(i - 1);
+            assertTrue(v.isCheckpoint(), "v" + i + " must be pure CHECKPOINT");
+            assertNotNull(v.getPieceDirectory(), "v" + i + " must have full pieceDirectory");
+            assertNotNull(v.getOriginalBufferContent(), "v" + i + " must have full original buffer");
+            assertNotNull(v.getAddBufferContent(), "v" + i + " must have full add buffer");
+        }
 
-        // Create v5 (CHECKPOINT: 5-interval checkpoint)
-        service.insert(0, "NEW ");
-        VersionSnapshot v5 = service.createVersion("Milestone 5 Checkpoint");
-        assertEquals(5, v5.getVersionId());
-        assertEquals(5, v5.getBaseVersionId());
-        assertEquals("CHECKPOINT", v5.getSnapshotType());
-        assertNotNull(v5.getPieceDirectory());
+        // Permanent interval checkpoints (v1, v5, v10, v15) must be CHECKPOINTS
+        assertTrue(service.getVersionHistory().get(0).isCheckpoint(), "v1 must be permanent checkpoint");
+        assertTrue(service.getVersionHistory().get(4).isCheckpoint(), "v5 must be permanent checkpoint");
+        assertTrue(service.getVersionHistory().get(9).isCheckpoint(), "v10 must be permanent checkpoint");
+        assertTrue(service.getVersionHistory().get(14).isCheckpoint(), "v15 must be permanent checkpoint");
 
-        // Create v6 (Delta from v5)
-        service.insert(service.getTotalLength(), " - Add 4");
-        VersionSnapshot v6 = service.createVersion("Step 4");
-        assertEquals(6, v6.getVersionId());
-        assertEquals(5, v6.getBaseVersionId()); // Delta based on v5
-        assertEquals("DELTA", v6.getSnapshotType());
+        // Older intermediate versions (< 12 and not 5th interval) must be compacted DELTAs:
+        // v2, v3, v4; v6, v7, v8, v9; v11
+        int[] deltaVersions = {2, 3, 4, 6, 7, 8, 9, 11};
+        for (int dv : deltaVersions) {
+            VersionSnapshot v = service.getVersionHistory().get(dv - 1);
+            assertTrue(v.isDelta(), "v" + dv + " must be compacted DELTA");
+            assertNull(v.getPieceDirectory(), "v" + dv + " must discard pieceDirectory to save 95%+ space");
+            assertNull(v.getOriginalBufferContent(), "v" + dv + " must discard original buffer");
+            assertNull(v.getAddBufferContent(), "v" + dv + " must discard add buffer");
+            assertFalse(v.getDiffChunks().isEmpty(), "v" + dv + " must have diff chunks");
+        }
 
-        // Create v7 (Delta from v6)
-        service.insert(service.getTotalLength(), " - Add 5");
-        VersionSnapshot v7 = service.createVersion("Step 5");
-        assertEquals(7, v7.getVersionId());
-        assertEquals(6, v7.getBaseVersionId()); // Incremental diff from v6
-        assertEquals("DELTA", v7.getSnapshotType());
+        // Test loss-free rollbacks across recent versions:
+        VersionSnapshot r16 = service.restoreVersion(16);
+        assertNotNull(r16);
+        assertTrue(service.getText().endsWith("[v16]"));
+        assertFalse(service.getText().contains("[v17]"));
 
-        // Test step-by-step rollbacks:
-        // Rollback to v4
-        VersionSnapshot r4 = service.restoreVersion(4);
-        assertNotNull(r4);
-        assertEquals("Document - Add 1 - Add 2", service.getText());
+        VersionSnapshot r12 = service.restoreVersion(12);
+        assertNotNull(r12);
+        assertTrue(service.getText().endsWith("[v12]"));
+        assertFalse(service.getText().contains("[v13]"));
 
-        // Rollback to v3
+        // Test loss-free rollbacks across compacted older delta versions:
+        VersionSnapshot r11 = service.restoreVersion(11);
+        assertNotNull(r11);
+        assertTrue(service.getText().endsWith("[v11]"));
+
+        VersionSnapshot r8 = service.restoreVersion(8);
+        assertNotNull(r8);
+        assertTrue(service.getText().endsWith("[v8]"));
+
         VersionSnapshot r3 = service.restoreVersion(3);
         assertNotNull(r3);
-        assertEquals("BaseDocument - Add 1 - Add 2", service.getText());
+        assertEquals("V1 Base Content [v2] [v3]", service.getText());
 
-        // Rollback to v2
-        VersionSnapshot r2 = service.restoreVersion(2);
-        assertNotNull(r2);
-        assertEquals("BaseDocument - Add 1", service.getText());
-
-        // Rollback to v1
         VersionSnapshot r1 = service.restoreVersion(1);
         assertNotNull(r1);
-        assertEquals("BaseDocument", service.getText());
-
-        // Rollback forward to v7
-        VersionSnapshot r7 = service.restoreVersion(7);
-        assertNotNull(r7);
-        assertEquals("NEW Document - Add 1 - Add 2 - Add 4 - Add 5", service.getText());
+        assertEquals("V1 Base Content", service.getText());
     }
 }
