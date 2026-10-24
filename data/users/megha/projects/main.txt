@@ -1,4 +1,4 @@
-NEW_HEADER_LINE
+CHAPTER_ONE
 --- SECTION #1 ---
 // Welcome to Antigravity Piece Table Multi-Line Text Editor
 // Built with Spring Boot backend + Monospace Virtual Line Rendering

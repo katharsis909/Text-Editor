@@ -42,6 +42,22 @@ public class Piece {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Piece piece = (Piece) o;
+        return start == piece.start && length == piece.length && buffer == piece.buffer;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = buffer != null ? buffer.hashCode() : 0;
+        result = 31 * result + start;
+        result = 31 * result + length;
+        return result;
+    }
+
+    @Override
     public String toString() {
         return "Piece{" +
                 "buffer=" + buffer +

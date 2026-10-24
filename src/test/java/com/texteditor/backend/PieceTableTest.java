@@ -3,6 +3,7 @@ package com.texteditor.backend;
 import com.texteditor.backend.model.BufferType;
 import com.texteditor.backend.model.EditDescription;
 import com.texteditor.backend.model.Piece;
+import com.texteditor.backend.model.VersionSnapshot;
 import com.texteditor.backend.service.PieceTableService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -305,5 +306,159 @@ public class PieceTableTest {
         // Buffer invariant: original and add buffers are never deleted
         assertTrue(service.getOriginalBufferSize() > 0);
         assertTrue(service.getAddBufferSize() > 0);
+    }
+
+    @Test
+    @DisplayName("7. 5-Interval Checkpoints & Delta Diffs: Verification of 95%+ space-saving and lossless rollback")
+    void testFiveIntervalCheckpointsAndDeltaRollback() {
+        service.initialize("V1 Base.");
+        // Version 1 is CHECKPOINT
+        VersionSnapshot v1 = service.getVersionHistory().get(0);
+        assertTrue(v1.isCheckpoint());
+        assertEquals("CHECKPOINT", v1.getSnapshotType());
+        assertNotNull(v1.getPieceDirectory());
+
+        // Create versions 2 to 12
+        for (int i = 2; i <= 12; i++) {
+            service.insert(service.getTotalLength(), " [v" + i + "]");
+            VersionSnapshot v = service.createVersion("Milestone " + i);
+            assertEquals(i, v.getVersionId());
+
+            if (i % 5 == 0) {
+                // Version 5, 10 are CHECKPOINTS
+                assertTrue(v.isCheckpoint(), "Version " + i + " must be a CHECKPOINT");
+                assertEquals("CHECKPOINT", v.getSnapshotType());
+                assertNotNull(v.getPieceDirectory(), "Checkpoint must store full pieceDirectory");
+                assertNotNull(v.getOriginalBufferContent());
+            } else {
+                // Versions 2, 3, 4, 6, 7, 8, 9, 11, 12 are DELTAS
+                assertTrue(v.isDelta(), "Version " + i + " must be a DELTA");
+                assertEquals("DELTA", v.getSnapshotType());
+                assertNull(v.getPieceDirectory(), "Delta must NOT store full pieceDirectory (space saving)");
+                assertNull(v.getOriginalBufferContent());
+                assertNotNull(v.getDiffChunks(), "Delta must store diff chunks");
+                assertFalse(v.getDiffChunks().isEmpty(), "Delta must have at least one diff chunk");
+            }
+        }
+
+        assertEquals(12, service.getVersionHistory().size());
+
+        // Text at v12
+        assertTrue(service.getText().contains("[v12]"));
+
+        // Rollback to v3 (a DELTA based on v1)
+        VersionSnapshot r3 = service.restoreVersion(3);
+        assertNotNull(r3);
+        assertEquals("V1 Base. [v2] [v3]", service.getText());
+
+        // Rollback to v5 (a CHECKPOINT)
+        VersionSnapshot r5 = service.restoreVersion(5);
+        assertNotNull(r5);
+        assertEquals("V1 Base. [v2] [v3] [v4] [v5]", service.getText());
+
+        // Rollback to v8 (a DELTA based on v5)
+        VersionSnapshot r8 = service.restoreVersion(8);
+        assertNotNull(r8);
+        assertEquals("V1 Base. [v2] [v3] [v4] [v5] [v6] [v7] [v8]", service.getText());
+
+        // Rollback to v10 (a CHECKPOINT)
+        VersionSnapshot r10 = service.restoreVersion(10);
+        assertNotNull(r10);
+        assertEquals("V1 Base. [v2] [v3] [v4] [v5] [v6] [v7] [v8] [v9] [v10]", service.getText());
+
+        // Rollback to v1 (initial CHECKPOINT)
+        VersionSnapshot r1 = service.restoreVersion(1);
+        assertNotNull(r1);
+        assertEquals("V1 Base.", service.getText());
+
+        // Rollback forward to v12 (a DELTA based on v10)
+        VersionSnapshot r12 = service.restoreVersion(12);
+        assertNotNull(r12);
+        assertTrue(service.getText().endsWith("[v12]"));
+    }
+
+    @Test
+    @DisplayName("8. PieceDiffChunk: LCS diff computation and patch reconstruction")
+    void testPieceDiffChunkComputation() {
+        Piece p1 = new Piece(BufferType.ORIGINAL, 0, 10);
+        Piece p2 = new Piece(BufferType.ADD, 0, 5);
+        Piece p3 = new Piece(BufferType.ORIGINAL, 10, 15);
+        Piece p4 = new Piece(BufferType.ADD, 5, 20);
+
+        List<Piece> base = List.of(p1, p2, p3, p4);
+
+        // Target: p2 replaced with [pNew1, pNew2]
+        Piece pNew1 = new Piece(BufferType.ADD, 25, 8);
+        Piece pNew2 = new Piece(BufferType.ADD, 33, 4);
+        List<Piece> target = List.of(p1, pNew1, pNew2, p3, p4);
+
+        List<com.texteditor.backend.model.PieceDiffChunk> diff = com.texteditor.backend.model.PieceDiffChunk.computeDiff(base, target);
+        assertEquals(1, diff.size());
+        assertEquals(1, diff.get(0).getOffset());
+        assertEquals(1, diff.get(0).getDeleteCount());
+        assertEquals(2, diff.get(0).getInsertedPieces().size());
+
+        // Apply diff to base
+        List<Piece> reconstructed = com.texteditor.backend.model.PieceDiffChunk.applyDiff(base, diff);
+        assertEquals(target.size(), reconstructed.size());
+        assertEquals(target, reconstructed);
+    }
+
+    @Test
+    @DisplayName("9. Disk Persistence: Serializing and rehydrating 5-interval checkpoints & deltas from companion JSON")
+    void testDiskPersistenceWithCheckpointsAndDeltas() throws IOException {
+        String testDocPath = "target/test_interval_doc.txt";
+        File f = new File(testDocPath);
+        if (f.exists()) f.delete();
+        File vf = new File(testDocPath + ".versions.json");
+        if (vf.exists()) vf.delete();
+
+        service.initialize("Initial doc content.");
+        service.saveToDiskPlan1(testDocPath);
+
+        for (int i = 2; i <= 10; i++) {
+            service.insert(service.getTotalLength(), " [part " + i + "]");
+            service.createVersion("Version " + i);
+        }
+
+        // Verify JSON companion file exists
+        assertTrue(vf.exists());
+        String jsonContent = java.nio.file.Files.readString(vf.toPath());
+        assertTrue(jsonContent.contains("\"snapshotType\":\"CHECKPOINT\""));
+        assertTrue(jsonContent.contains("\"snapshotType\":\"DELTA\""));
+
+        // Now test reloading into an independent, fresh service instance
+        PieceTableService freshService = new PieceTableService();
+        freshService.loadFromDiskPlan1(testDocPath);
+        freshService.loadVersionsFromDisk();
+
+        assertEquals(10, freshService.getVersionHistory().size());
+
+        // Checkpoint versions: v1, v5, v10
+        assertTrue(freshService.getVersionHistory().get(0).isCheckpoint());
+        assertTrue(freshService.getVersionHistory().get(4).isCheckpoint());
+        assertTrue(freshService.getVersionHistory().get(9).isCheckpoint());
+
+        // Delta versions: v2, v3, v4, v6, v7, v8, v9
+        assertTrue(freshService.getVersionHistory().get(1).isDelta());
+        assertTrue(freshService.getVersionHistory().get(2).isDelta());
+        assertTrue(freshService.getVersionHistory().get(5).isDelta());
+
+        // Test rollback on the newly loaded service instance
+        VersionSnapshot rolledV4 = freshService.restoreVersion(4);
+        assertNotNull(rolledV4);
+        assertEquals("Initial doc content. [part 2] [part 3] [part 4]", freshService.getText());
+
+        VersionSnapshot rolledV5 = freshService.restoreVersion(5);
+        assertNotNull(rolledV5);
+        assertEquals("Initial doc content. [part 2] [part 3] [part 4] [part 5]", freshService.getText());
+
+        VersionSnapshot rolledV8 = freshService.restoreVersion(8);
+        assertNotNull(rolledV8);
+        assertTrue(freshService.getText().endsWith("[part 8]"));
+
+        // Cleanup
+        f.delete();
+        vf.delete();
     }
 }

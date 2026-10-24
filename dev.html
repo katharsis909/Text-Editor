@@ -406,6 +406,7 @@
         <thead>
           <tr>
             <th>Version #</th>
+            <th>Type</th>
             <th>Description</th>
             <th>Timestamp</th>
             <th>Total Length</th>
@@ -643,9 +644,15 @@
         versionsTableBody.innerHTML = '';
         (versions || []).forEach(v => {
           const row = document.createElement('tr');
+          const isCkpt = (v.snapshotType === 'CHECKPOINT');
+          const typeBadge = isCkpt
+            ? `<span class="badge-orig" style="font-size:9px;">CHECKPOINT</span>`
+            : `<span class="badge-add" style="font-size:9px;">DELTA (v${v.baseVersionId})</span>`;
+
           row.innerHTML = `
             <td><strong>v${v.versionId}</strong></td>
-            <td>${v.description || '-'}</td>
+            <td>${typeBadge}</td>
+            <td>${v.description || '-'}${v.deltaSummary ? `<div style="font-size:9px; color:var(--muted);">${v.deltaSummary}</div>` : ''}</td>
             <td>${new Date(v.timestamp).toLocaleTimeString()}</td>
             <td>${v.totalLength.toLocaleString()}</td>
             <td>${v.piecesCount} pieces</td>

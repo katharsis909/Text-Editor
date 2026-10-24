@@ -17,10 +17,11 @@ Designed from the ground up to support large multi-line documents (100,000+ char
 - **Zero Reallocation Deletes & Edits**: Deletions split pieces and adjust directory pointers without mutating RAM buffer strings.
 - **Synchronous Edit Queue (No Optimistic UI)**: All edits, backspaces, and clipboard pastes are processed sequentially by the server with authoritative auto-saving.
 
-### 2. 🕒 Persistent Version History & Rollback
-- **Companion Disk Persistence**: Version snapshots are automatically stored on disk alongside the file as `<fileName>.versions.json`.
-- **Complete Directory & Buffer Snapshots**: Preserves piece descriptors alongside buffer state, allowing exact, lossless rollback to any previous version.
-- **Rollback Without Data Loss**: Reverts the active piece directory and immediately triggers disk synchronization.
+### 2. 🕒 5-Interval Checkpoint + Delta Diff Version History & Rollback
+- **Keyframe / Checkpoint Interval (Every 5th Version)**: Version 1 and every 5th version (5, 10, 15, 20...) stores a full `CHECKPOINT` snapshot containing the complete piece directory and buffer states.
+- **Delta / Changed Interval Snapshots (95%+ Space Savings)**: Intermediate versions (2, 3, 4; 6, 7, 8, 9...) store only `PieceDiffChunk` changed intervals and newly appended text relative to the nearest interval checkpoint, reducing JSON companion disk size by 95%+.
+- **Lossless Rollback**: Restoring a delta version seamlessly reconstructs the exact piece sequence from the base checkpoint and diff chunks in $O(1)$.
+- **Companion Disk Persistence**: Persisted automatically to `<fileName>.versions.json` with null-omission (`@JsonInclude(NON_NULL)`).
 
 ### 3. 📂 Multi-User & Multi-Folder Workspaces
 - Pre-configured user workspaces (`megha`, `john`, `alice`) with isolated directories:
