@@ -1443,19 +1443,14 @@
         (versions || []).reverse().forEach(v => {
           const item = document.createElement('div');
           item.style.cssText = "background:#0d1117; border:1px solid var(--border); border-radius:6px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;";
-          const isCkpt = (v.snapshotType === 'CHECKPOINT');
-          const typeBadge = isCkpt
-            ? `<span style="background:rgba(35, 134, 54, 0.2); color:#3fb950; border:1px solid #238636; border-radius:3px; padding:1px 5px; font-size:9px; font-weight:600; margin-left:6px;">💾 Checkpoint</span>`
-            : `<span style="background:rgba(137, 87, 229, 0.2); color:#a371f7; border:1px solid #8957e5; border-radius:3px; padding:1px 5px; font-size:9px; font-weight:600; margin-left:6px;">⚡ Delta (from v${v.baseVersionId})</span>`;
 
           item.innerHTML = `
             <div>
               <div style="font-weight:600; font-size:12px; color:var(--text); display:flex; align-items:center;">
-                v${v.versionId}: ${v.description || 'Snapshot'} ${typeBadge}
+                v${v.versionId}: ${v.description || 'Snapshot'}
               </div>
               <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:3px;">
                 ${new Date(v.timestamp).toLocaleTimeString()} &bull; ${v.totalLength.toLocaleString()} chars &bull; ${v.piecesCount} pieces
-                ${v.deltaSummary ? ` &bull; <span style="color:#8b949e;">${v.deltaSummary}</span>` : ''}
               </div>
             </div>
             <button onclick="restoreVersionFromModal(${v.versionId})" class="btn" style="padding:3px 8px; font-size:11px;">↺ Rollback</button>
