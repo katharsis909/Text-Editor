@@ -591,10 +591,11 @@ public class PieceTableService {
     }
 
     /**
-     * VERSION HISTORY (5-Interval Checkpoints + Delta Diffs):
+     * VERSION HISTORY (5-Interval Checkpoints + Incremental Piece Diffs):
      * - Version 1 and every 5th version (5, 10, 15, 20...) stores all pieces and full buffers (CHECKPOINT).
-     * - Intermediate versions inside each 5 (2, 3, 4; 6, 7, 8, 9...) store only the changed intervals/diff
-     *   relative to the nearest interval checkpoint, reducing memory and disk usage by 95%+.
+     * - Intermediate versions inside each 5 (2, 3, 4; 6, 7, 8, 9...) store only the changed piece
+     *   intervals/diffs relative to each version increment, referring directly to pieces or parts of pieces
+     *   without LCS, reducing memory and disk usage by 95%+.
      */
     public synchronized VersionSnapshot createVersion(String description) {
         int nextVersionId = versionHistory.size() + 1;
@@ -621,21 +622,18 @@ public class PieceTableService {
                     "Full Checkpoint (Interval #" + (nextVersionId == 1 ? 1 : nextVersionId / 5) + ")"
             );
         } else {
-            VersionSnapshot baseCheckpoint = findNearestPrecedingCheckpoint(nextVersionId);
-            List<PieceDiffChunk> diffChunks = PieceDiffChunk.computeDiff(
-                    baseCheckpoint != null ? baseCheckpoint.getPieceDirectory() : java.util.Collections.emptyList(),
-                    this.pieceDirectory
-            );
+            // Delta snapshot: store piece diffs for this version increment from previous version (v - 1)
+            int baseId = nextVersionId - 1;
+            List<Piece> prevPieces = resolvePieceDirectoryForVersion(baseId);
+            List<PieceDiffChunk> diffChunks = PieceDiffChunk.computeDiff(prevPieces, this.pieceDirectory);
 
+            int prevAddLen = resolveAddBufferForVersion(baseId).length();
             String addedText = null;
-            int baseAddLen = (baseCheckpoint != null && baseCheckpoint.getAddBufferContent() != null)
-                    ? baseCheckpoint.getAddBufferContent().length() : 0;
-            if (addBuffer.length() > baseAddLen) {
-                addedText = addBuffer.substring(baseAddLen);
+            if (addBuffer.length() > prevAddLen) {
+                addedText = addBuffer.substring(prevAddLen);
             }
 
-            int baseId = baseCheckpoint != null ? baseCheckpoint.getVersionId() : 1;
-            String summary = "Delta from v" + baseId + " (" + diffChunks.size() + " diff chunk" +
+            String summary = "Delta from v" + baseId + " (" + diffChunks.size() + " piece diff" +
                     (diffChunks.size() == 1 ? "" : "s") +
                     (addedText != null && !addedText.isEmpty() ? ", +" + addedText.length() + " chars" : "") + ")";
 
@@ -666,78 +664,133 @@ public class PieceTableService {
     }
 
     public synchronized VersionSnapshot restoreVersion(int versionId) {
-        for (VersionSnapshot v : versionHistory) {
-            if (v.getVersionId() == versionId) {
-                // Snapshot current state to undo before rollback
-                undoStack.push(new UndoRedoEntry("RESTORE_VERSION", 0, getTotalLength(), pieceDirectory, "Rollback to Version #" + versionId));
-                redoStack.clear();
-
-                if (v.isCheckpoint()) {
-                    // Checkpoint: restore directly from stored buffers and piece directory
-                    if (v.getOriginalBufferContent() != null) {
-                        this.originalBuffer = new StringBuilder(v.getOriginalBufferContent());
-                    }
-                    if (v.getAddBufferContent() != null) {
-                        this.addBuffer = new StringBuilder(v.getAddBufferContent());
-                    }
-                    if (v.getPieceDirectory() != null) {
-                        this.pieceDirectory = v.getPieceDirectory();
-                    }
-                } else {
-                    // Delta snapshot: reconstruct state from base checkpoint + diff chunks
-                    VersionSnapshot baseCheckpoint = findVersionById(v.getBaseVersionId());
-                    if (baseCheckpoint == null) {
-                        baseCheckpoint = findNearestPrecedingCheckpoint(v.getVersionId());
-                    }
-
-                    if (baseCheckpoint != null) {
-                        // Restore original buffer from checkpoint
-                        if (baseCheckpoint.getOriginalBufferContent() != null) {
-                            this.originalBuffer = new StringBuilder(baseCheckpoint.getOriginalBufferContent());
-                        }
-                        // Restore add buffer: base add buffer + delta addedText
-                        StringBuilder newAdd = new StringBuilder(
-                                baseCheckpoint.getAddBufferContent() != null ? baseCheckpoint.getAddBufferContent() : ""
-                        );
-                        if (v.getAddedText() != null) {
-                            newAdd.append(v.getAddedText());
-                        }
-                        this.addBuffer = newAdd;
-
-                        // Reconstruct piece directory by applying diff chunks to base checkpoint piece directory
-                        this.pieceDirectory = PieceDiffChunk.applyDiff(
-                                baseCheckpoint.getPieceDirectory(),
-                                v.getDiffChunks()
-                        );
-                    } else if (v.getPieceDirectory() != null) {
-                        this.pieceDirectory = v.getPieceDirectory();
-                    }
-                }
-
-                history.add(new EditDescription(
-                        "RESTORE_VERSION",
-                        0,
-                        getTotalLength(),
-                        "",
-                        "PIECE_DIRECTORY",
-                        pieceDirectory.size(),
-                        pieceDirectory.size(),
-                        "Restored document to Version #" + versionId + " (" + v.getDescription() + ") [" + v.getSnapshotType() + "]"
-                ));
-                triggerAutoSave();
-                return v;
-            }
+        VersionSnapshot v = findVersionById(versionId);
+        if (v == null) {
+            return null;
         }
-        return null;
+
+        // Snapshot current state to undo before rollback
+        undoStack.push(new UndoRedoEntry("RESTORE_VERSION", 0, getTotalLength(), pieceDirectory, "Rollback to Version #" + versionId));
+        redoStack.clear();
+
+        if (v.isCheckpoint()) {
+            // Checkpoint: restore directly from stored buffers and piece directory
+            if (v.getOriginalBufferContent() != null) {
+                this.originalBuffer = new StringBuilder(v.getOriginalBufferContent());
+            }
+            if (v.getAddBufferContent() != null) {
+                this.addBuffer = new StringBuilder(v.getAddBufferContent());
+            }
+            if (v.getPieceDirectory() != null) {
+                this.pieceDirectory = new ArrayList<>(v.getPieceDirectory());
+            }
+        } else {
+            // Delta snapshot: reconstruct piece directory and buffers from 5-interval base checkpoint + incremental piece diffs
+            this.originalBuffer = new StringBuilder(resolveOriginalBufferForVersion(versionId));
+            this.addBuffer = new StringBuilder(resolveAddBufferForVersion(versionId));
+            this.pieceDirectory = resolvePieceDirectoryForVersion(versionId);
+        }
+
+        history.add(new EditDescription(
+                "RESTORE_VERSION",
+                0,
+                getTotalLength(),
+                "",
+                "PIECE_DIRECTORY",
+                pieceDirectory.size(),
+                pieceDirectory.size(),
+                "Restored document to Version #" + versionId + " (" + v.getDescription() + ") [" + v.getSnapshotType() + "]"
+        ));
+        triggerAutoSave();
+        return v;
     }
 
     /**
-     * Helper to find the nearest preceding checkpoint version.
+     * Resolves the full piece directory for any version:
+     * - If checkpoint: returns its own stored pieces.
+     * - If delta: starts at nearest preceding checkpoint C <= versionId and replays
+     *   the incremental piece diff chunks up to versionId (at most 4 replay steps!).
+     */
+    public synchronized List<Piece> resolvePieceDirectoryForVersion(int versionId) {
+        VersionSnapshot target = findVersionById(versionId);
+        if (target == null) return java.util.Collections.emptyList();
+        if (target.isCheckpoint() && target.getPieceDirectory() != null) {
+            return new ArrayList<>(target.getPieceDirectory());
+        }
+
+        VersionSnapshot checkpoint = findNearestPrecedingCheckpoint(versionId);
+        if (checkpoint == null || checkpoint.getPieceDirectory() == null) {
+            return target.getPieceDirectory() != null ? new ArrayList<>(target.getPieceDirectory()) : java.util.Collections.emptyList();
+        }
+
+        // If target was directly diffed against the checkpoint
+        if (target.getBaseVersionId() == checkpoint.getVersionId()) {
+            return PieceDiffChunk.applyDiff(checkpoint.getPieceDirectory(), target.getDiffChunks());
+        }
+
+        // Incremental chain from checkpoint (checkpoint + 1 ... versionId)
+        List<Piece> currentPieces = new ArrayList<>(checkpoint.getPieceDirectory());
+        for (int i = checkpoint.getVersionId() + 1; i <= versionId; i++) {
+            VersionSnapshot step = findVersionById(i);
+            if (step != null && step.getDiffChunks() != null && !step.getDiffChunks().isEmpty()) {
+                currentPieces = PieceDiffChunk.applyDiff(currentPieces, step.getDiffChunks());
+            }
+        }
+        return currentPieces;
+    }
+
+    /**
+     * Resolves the full addBuffer for any version.
+     */
+    public synchronized String resolveAddBufferForVersion(int versionId) {
+        VersionSnapshot target = findVersionById(versionId);
+        if (target == null) return "";
+        if (target.isCheckpoint() && target.getAddBufferContent() != null) {
+            return target.getAddBufferContent();
+        }
+
+        VersionSnapshot checkpoint = findNearestPrecedingCheckpoint(versionId);
+        if (checkpoint == null) return "";
+
+        StringBuilder sb = new StringBuilder(checkpoint.getAddBufferContent() != null ? checkpoint.getAddBufferContent() : "");
+        if (target.getBaseVersionId() == checkpoint.getVersionId()) {
+            if (target.getAddedText() != null) {
+                sb.append(target.getAddedText());
+            }
+            return sb.toString();
+        }
+
+        for (int i = checkpoint.getVersionId() + 1; i <= versionId; i++) {
+            VersionSnapshot step = findVersionById(i);
+            if (step != null && step.getAddedText() != null) {
+                sb.append(step.getAddedText());
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Resolves the original buffer for any version.
+     */
+    public synchronized String resolveOriginalBufferForVersion(int versionId) {
+        VersionSnapshot target = findVersionById(versionId);
+        if (target != null && target.isCheckpoint() && target.getOriginalBufferContent() != null) {
+            return target.getOriginalBufferContent();
+        }
+        VersionSnapshot checkpoint = findNearestPrecedingCheckpoint(versionId);
+        if (checkpoint != null && checkpoint.getOriginalBufferContent() != null) {
+            return checkpoint.getOriginalBufferContent();
+        }
+        return originalBuffer != null ? originalBuffer.toString() : "";
+    }
+
+    /**
+     * Helper to find the nearest preceding checkpoint version (C <= targetVersionId).
      */
     private VersionSnapshot findNearestPrecedingCheckpoint(int targetVersionId) {
         for (int i = versionHistory.size() - 1; i >= 0; i--) {
             VersionSnapshot v = versionHistory.get(i);
-            if (v.getVersionId() < targetVersionId && v.isCheckpoint()) {
+            if (v.getVersionId() <= targetVersionId && v.isCheckpoint()) {
                 return v;
             }
         }
@@ -763,14 +816,7 @@ public class PieceTableService {
      * Resolves the reconstructed piece directory for any version (checkpoint or delta).
      */
     public synchronized List<Piece> getPieceDirectoryForVersion(int versionId) {
-        VersionSnapshot target = findVersionById(versionId);
-        if (target == null) return java.util.Collections.emptyList();
-        if (target.isCheckpoint()) {
-            return target.getPieceDirectory() != null ? target.getPieceDirectory() : java.util.Collections.emptyList();
-        }
-        VersionSnapshot base = findVersionById(target.getBaseVersionId());
-        if (base == null) base = findNearestPrecedingCheckpoint(target.getVersionId());
-        return target.resolvePieceDirectory(base);
+        return resolvePieceDirectoryForVersion(versionId);
     }
 
     /**

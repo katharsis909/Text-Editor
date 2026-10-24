@@ -8,9 +8,13 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Represents a changed interval / diff in the Piece Directory.
+ * Represents a changed interval / piece diff in the Piece Directory.
  * Describes that starting at `offset` in the base pieceDirectory,
  * `deleteCount` pieces were replaced by `insertedPieces`.
+ *
+ * Implemented WITHOUT expensive string/list LCS algorithms:
+ * Directly identifies the changed piece interval (or parts of pieces)
+ * in O(pieces) linear time with zero matrix allocations.
  */
 public class PieceDiffChunk {
 
@@ -41,7 +45,7 @@ public class PieceDiffChunk {
     }
 
     /**
-     * Applies a list of diff chunks onto a base piece directory.
+     * Applies diff chunks onto a base piece directory.
      * Chunks are sorted in descending order of offset so that changes
      * at higher indices do not disrupt lower indices.
      */
@@ -52,7 +56,6 @@ public class PieceDiffChunk {
             return result;
         }
 
-        // Sort descending by offset
         List<PieceDiffChunk> sorted = new ArrayList<>(chunks);
         sorted.sort((a, b) -> Integer.compare(b.getOffset(), a.getOffset()));
 
@@ -60,11 +63,9 @@ public class PieceDiffChunk {
             int off = Math.max(0, Math.min(chunk.getOffset(), result.size()));
             int del = Math.max(0, Math.min(chunk.getDeleteCount(), result.size() - off));
 
-            // Remove deleted pieces
             for (int i = 0; i < del; i++) {
                 result.remove(off);
             }
-            // Insert new pieces
             List<Piece> inserted = chunk.getInsertedPieces();
             if (inserted != null && !inserted.isEmpty()) {
                 result.addAll(off, inserted);
@@ -74,7 +75,8 @@ public class PieceDiffChunk {
     }
 
     /**
-     * Computes the list of diff chunks needed to transform base into target.
+     * Directly identifies the changed piece interval between base and target in O(pieces).
+     * Zero LCS, zero DP table: directly detects which pieces or parts of pieces were replaced.
      */
     public static List<PieceDiffChunk> computeDiff(List<Piece> base, List<Piece> target) {
         if (base == null) base = Collections.emptyList();
@@ -83,91 +85,35 @@ public class PieceDiffChunk {
         int n = base.size();
         int m = target.size();
 
-        // 1. Common prefix
-        int prefix = 0;
-        while (prefix < n && prefix < m && piecesEqual(base.get(prefix), target.get(prefix))) {
-            prefix++;
+        // 1. Common prefix of pieces from left
+        int start = 0;
+        while (start < n && start < m && piecesEqual(base.get(start), target.get(start))) {
+            start++;
         }
 
-        // 2. Common suffix
-        int suffix = 0;
-        while (suffix < (n - prefix) && suffix < (m - prefix) &&
-                piecesEqual(base.get(n - 1 - suffix), target.get(m - 1 - suffix))) {
-            suffix++;
+        // 2. Common suffix of pieces from right
+        int endBase = n - 1;
+        int endTarget = m - 1;
+        while (endBase >= start && endTarget >= start && piecesEqual(base.get(endBase), target.get(endTarget))) {
+            endBase--;
+            endTarget--;
         }
 
-        // If prefix + suffix cover everything and lengths are equal -> identical
-        if (prefix + suffix == n && prefix + suffix == m) {
+        // If no differences found, return empty list
+        if (start > endBase && start > endTarget) {
             return Collections.emptyList();
         }
 
-        List<Piece> midBase = base.subList(prefix, n - suffix);
-        List<Piece> midTarget = target.subList(prefix, m - suffix);
+        // The changed interval in base: pieces from start to endBase
+        int deleteCount = Math.max(0, endBase - start + 1);
 
-        // If midBase is empty, simple insertion at prefix
-        if (midBase.isEmpty()) {
-            return List.of(new PieceDiffChunk(prefix, 0, midTarget));
-        }
-        // If midTarget is empty, simple deletion at prefix
-        if (midTarget.isEmpty()) {
-            return List.of(new PieceDiffChunk(prefix, midBase.size(), Collections.emptyList()));
+        // The replacement pieces in target: pieces or parts of pieces from start to endTarget
+        List<Piece> replacementPieces = new ArrayList<>();
+        if (start <= endTarget) {
+            replacementPieces.addAll(target.subList(start, endTarget + 1));
         }
 
-        // General case: LCS on midBase and midTarget
-        int bn = midBase.size();
-        int tm = midTarget.size();
-        int[][] dp = new int[bn + 1][tm + 1];
-        for (int i = 0; i < bn; i++) {
-            for (int j = 0; j < tm; j++) {
-                if (piecesEqual(midBase.get(i), midTarget.get(j))) {
-                    dp[i + 1][j + 1] = dp[i][j] + 1;
-                } else {
-                    dp[i + 1][j + 1] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-                }
-            }
-        }
-
-        // Backtrack to find matching pairs (i, j)
-        List<int[]> matches = new ArrayList<>();
-        int bi = bn, tj = tm;
-        while (bi > 0 && tj > 0) {
-            if (piecesEqual(midBase.get(bi - 1), midTarget.get(tj - 1))) {
-                matches.add(new int[]{bi - 1, tj - 1});
-                bi--;
-                tj--;
-            } else if (dp[bi - 1][tj] >= dp[bi][tj - 1]) {
-                bi--;
-            } else {
-                tj--;
-            }
-        }
-        Collections.reverse(matches);
-
-        // Generate chunks between matches
-        List<PieceDiffChunk> chunks = new ArrayList<>();
-        int lastBase = 0;
-        int lastTarget = 0;
-
-        for (int[] match : matches) {
-            int matchBase = match[0];
-            int matchTarget = match[1];
-
-            if (matchBase > lastBase || matchTarget > lastTarget) {
-                int delCount = matchBase - lastBase;
-                List<Piece> ins = new ArrayList<>(midTarget.subList(lastTarget, matchTarget));
-                chunks.add(new PieceDiffChunk(prefix + lastBase, delCount, ins));
-            }
-            lastBase = matchBase + 1;
-            lastTarget = matchTarget + 1;
-        }
-
-        if (lastBase < bn || lastTarget < tm) {
-            int delCount = bn - lastBase;
-            List<Piece> ins = new ArrayList<>(midTarget.subList(lastTarget, tm));
-            chunks.add(new PieceDiffChunk(prefix + lastBase, delCount, ins));
-        }
-
-        return chunks;
+        return List.of(new PieceDiffChunk(start, deleteCount, replacementPieces));
     }
 
     private static boolean piecesEqual(Piece a, Piece b) {

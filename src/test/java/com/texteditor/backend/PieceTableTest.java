@@ -461,4 +461,81 @@ public class PieceTableTest {
         f.delete();
         vf.delete();
     }
+
+    @Test
+    @DisplayName("10. Incremental Version Diffs: Each intermediate version stores diff from previous version increment, checkpoints at every 5th")
+    void testIncrementalPieceDiffsChainAndIntervalCheckpoints() {
+        service.initialize("BaseDocument"); // v1 Checkpoint
+        assertEquals(1, service.getVersionHistory().size());
+        assertEquals("CHECKPOINT", service.getVersionHistory().get(0).getSnapshotType());
+
+        // Create v2 (Delta from v1)
+        service.insert(service.getTotalLength(), " - Add 1");
+        VersionSnapshot v2 = service.createVersion("Step 1");
+        assertEquals(2, v2.getVersionId());
+        assertEquals(1, v2.getBaseVersionId()); // Delta based on v1
+        assertEquals("DELTA", v2.getSnapshotType());
+
+        // Create v3 (Delta from v2)
+        service.insert(service.getTotalLength(), " - Add 2");
+        VersionSnapshot v3 = service.createVersion("Step 2");
+        assertEquals(3, v3.getVersionId());
+        assertEquals(2, v3.getBaseVersionId()); // Incremental diff from v2
+        assertEquals("DELTA", v3.getSnapshotType());
+
+        // Create v4 (Delta from v3 with a delete operation)
+        service.delete(0, 4); // Remove "Base" -> "Document - Add 1 - Add 2"
+        VersionSnapshot v4 = service.createVersion("Step 3 Delete");
+        assertEquals(4, v4.getVersionId());
+        assertEquals(3, v4.getBaseVersionId()); // Incremental diff from v3
+        assertEquals("DELTA", v4.getSnapshotType());
+
+        // Create v5 (CHECKPOINT: 5-interval checkpoint)
+        service.insert(0, "NEW ");
+        VersionSnapshot v5 = service.createVersion("Milestone 5 Checkpoint");
+        assertEquals(5, v5.getVersionId());
+        assertEquals(5, v5.getBaseVersionId());
+        assertEquals("CHECKPOINT", v5.getSnapshotType());
+        assertNotNull(v5.getPieceDirectory());
+
+        // Create v6 (Delta from v5)
+        service.insert(service.getTotalLength(), " - Add 4");
+        VersionSnapshot v6 = service.createVersion("Step 4");
+        assertEquals(6, v6.getVersionId());
+        assertEquals(5, v6.getBaseVersionId()); // Delta based on v5
+        assertEquals("DELTA", v6.getSnapshotType());
+
+        // Create v7 (Delta from v6)
+        service.insert(service.getTotalLength(), " - Add 5");
+        VersionSnapshot v7 = service.createVersion("Step 5");
+        assertEquals(7, v7.getVersionId());
+        assertEquals(6, v7.getBaseVersionId()); // Incremental diff from v6
+        assertEquals("DELTA", v7.getSnapshotType());
+
+        // Test step-by-step rollbacks:
+        // Rollback to v4
+        VersionSnapshot r4 = service.restoreVersion(4);
+        assertNotNull(r4);
+        assertEquals("Document - Add 1 - Add 2", service.getText());
+
+        // Rollback to v3
+        VersionSnapshot r3 = service.restoreVersion(3);
+        assertNotNull(r3);
+        assertEquals("BaseDocument - Add 1 - Add 2", service.getText());
+
+        // Rollback to v2
+        VersionSnapshot r2 = service.restoreVersion(2);
+        assertNotNull(r2);
+        assertEquals("BaseDocument - Add 1", service.getText());
+
+        // Rollback to v1
+        VersionSnapshot r1 = service.restoreVersion(1);
+        assertNotNull(r1);
+        assertEquals("BaseDocument", service.getText());
+
+        // Rollback forward to v7
+        VersionSnapshot r7 = service.restoreVersion(7);
+        assertNotNull(r7);
+        assertEquals("NEW Document - Add 1 - Add 2 - Add 4 - Add 5", service.getText());
+    }
 }
