@@ -76,9 +76,15 @@ public class VersionSnapshot {
         this.totalLength = totalLength;
         this.piecesCount = piecesCount;
         this.snapshotType = (snapshotType != null && !snapshotType.isBlank()) ? snapshotType.toUpperCase() : "CHECKPOINT";
-        this.baseVersionId = (baseVersionId != null) ? baseVersionId : versionId;
-
-        this.pieceDirectory = pieceDirectory != null ? new ArrayList<>(pieceDirectory) : null;
+        this.baseVersionId = baseVersionId != null ? baseVersionId : versionId;
+        if (pieceDirectory != null) {
+            this.pieceDirectory = new ArrayList<>(pieceDirectory.size());
+            for (Piece p : pieceDirectory) {
+                this.pieceDirectory.add(new Piece(p.getBuffer(), p.getStart(), p.getLength()));
+            }
+        } else {
+            this.pieceDirectory = null;
+        }
         this.originalBufferContent = originalBufferContent;
         this.addBufferContent = addBufferContent;
 
@@ -154,7 +160,12 @@ public class VersionSnapshot {
     }
 
     public List<Piece> getPieceDirectory() {
-        return pieceDirectory != null ? new ArrayList<>(pieceDirectory) : null;
+        if (pieceDirectory == null) return null;
+        List<Piece> copy = new ArrayList<>(pieceDirectory.size());
+        for (Piece p : pieceDirectory) {
+            copy.add(new Piece(p.getBuffer(), p.getStart(), p.getLength()));
+        }
+        return copy;
     }
 
     public String getOriginalBufferContent() {

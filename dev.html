@@ -615,7 +615,9 @@
         const data = await res.json();
 
         valTotalChars.textContent = (data.totalLength || 0).toLocaleString();
-        valPieceCount.textContent = (data.pieceDirectory ? data.pieceDirectory.length : 0);
+        const modeLabel = data.directoryMode || 'FLAT_LIST';
+        const depthLabel = data.treeActive ? ` (d:${data.treeDepth})` : '';
+        valPieceCount.innerHTML = `${(data.pieceDirectory ? data.pieceDirectory.length : 0)} <span style="font-size:10px; font-weight:normal; color:${data.treeActive ? '#38bdf8' : '#94a3b8'};">[${modeLabel}${depthLabel}]</span>`;
         valOriginalBuffer.textContent = `${(data.originalBufferSize || 0).toLocaleString()} chars`;
         valAddBuffer.textContent = `${(data.addBufferSize || 0).toLocaleString()} chars`;
         valUndoRedo.textContent = `${data.undoStackSize || 0} / ${data.redoStackSize || 0}`;

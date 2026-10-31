@@ -120,6 +120,10 @@ public class PieceTableController {
         response.put("canRedo", service.canRedo());
         response.put("versionCount", service.getVersionHistory().size());
         response.put("activeFilePath", service.getActiveFilePath());
+        response.put("directoryMode", service.getDirectoryMode());
+        response.put("treeActive", service.isTreeActive());
+        response.put("treeThreshold", PieceTableService.TREE_THRESHOLD);
+        response.put("treeDepth", service.getPieceTree() != null ? service.getPieceTree().getDepth() : 0);
         return ResponseEntity.ok(response);
     }
 

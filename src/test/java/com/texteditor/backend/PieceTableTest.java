@@ -541,4 +541,146 @@ public class PieceTableTest {
         assertNotNull(r1);
         assertEquals("V1 Base Content", service.getText());
     }
+
+    @Test
+    @DisplayName("11. Point 4: Typing Merge - Consecutive keystrokes merge into uncommitted ADD piece (0 fragmentation)")
+    void testTypingMergeDefragmentationUncommitted() {
+        service.initialize("Hello");
+        assertEquals(1, service.getPieceDirectory().size());
+
+        // First keystroke creates 1 ADD piece
+        service.insert(service.getTotalLength(), " ");
+        assertEquals(2, service.getPieceDirectory().size());
+        assertEquals(1, service.getPieceDirectory().get(1).getLength());
+
+        // Consecutive keystrokes: 'W', 'o', 'r', 'l', 'd'
+        String[] keystrokes = {"W", "o", "r", "l", "d", "!"};
+        for (String k : keystrokes) {
+            EditDescription edit = service.insert(service.getTotalLength(), k);
+            assertTrue(edit.getDetails().contains("Typing merge"));
+            // Pieces count must NOT increase!
+            assertEquals(2, service.getPieceDirectory().size(), "Keystroke '" + k + "' must merge into uncommitted piece");
+        }
+
+        assertEquals("Hello World!", service.getText());
+        assertEquals(7, service.getPieceDirectory().get(1).getLength()); // " World!" = 7 chars
+    }
+
+    @Test
+    @DisplayName("12. Point 4: Commit Isolation - Committed pieces are NEVER mutated or defragmented")
+    void testCommitBoundaryPreservationNoDefragAcrossCommit() {
+        service.initialize("Base");
+        assertEquals(1, service.getPieceDirectory().size());
+
+        // Uncommitted typing
+        service.insert(service.getTotalLength(), " First");
+        assertEquals(2, service.getPieceDirectory().size());
+        assertEquals("Base First", service.getText());
+
+        // Commit snapshot (Version 2)
+        VersionSnapshot v2 = service.createVersion("Commit 1");
+        assertEquals(2, v2.getPiecesCount());
+        int committedAddLen = service.getPieceDirectory().get(1).getLength();
+        assertEquals(6, committedAddLen); // " First"
+
+        // Subsequent typing AFTER commit: MUST NOT merge into the committed piece!
+        EditDescription postCommitEdit = service.insert(service.getTotalLength(), " Second");
+        assertFalse(postCommitEdit.getDetails().contains("Typing merge into uncommitted piece #1"),
+                "Post-commit typing must NOT mutate committed piece #1");
+        // A new piece must be created for the new uncommitted typing
+        assertEquals(3, service.getPieceDirectory().size());
+        assertEquals("Base First Second", service.getText());
+
+        assertEquals(2, service.getVersionHistory().get(1).getPiecesCount());
+        assertEquals("Base First", service.resolveOriginalBufferForVersion(2) +
+                service.resolveAddBufferForVersion(2));
+
+        // Restore to Version 2
+        service.restoreVersion(2);
+        assertEquals("Base First", service.getText());
+        assertEquals(2, service.getPieceDirectory().size());
+    }
+
+    @Test
+    @DisplayName("13. Point 4: Backspace Trim - Trims uncommitted ADD piece without fragmentation")
+    void testBackspaceTrimUncommitted() {
+        service.initialize("Header: ");
+        assertEquals(1, service.getPieceDirectory().size());
+
+        // Type "ABCDE"
+        service.insert(service.getTotalLength(), "A");
+        service.insert(service.getTotalLength(), "B");
+        service.insert(service.getTotalLength(), "C");
+        service.insert(service.getTotalLength(), "D");
+        service.insert(service.getTotalLength(), "E");
+
+        assertEquals(2, service.getPieceDirectory().size());
+        assertEquals("Header: ABCDE", service.getText());
+        assertEquals(5, service.getPieceDirectory().get(1).getLength());
+
+        // Backspace 'E' (position 12, length 1)
+        EditDescription del1 = service.delete(12, 1);
+        assertTrue(del1.getDetails().contains("Backspace trimmed uncommitted piece"));
+        assertEquals(2, service.getPieceDirectory().size());
+        assertEquals("Header: ABCD", service.getText());
+        assertEquals(4, service.getPieceDirectory().get(1).getLength());
+
+        // Backspace 'CD' (position 10, length 2)
+        EditDescription del2 = service.delete(10, 2);
+        assertTrue(del2.getDetails().contains("Backspace trimmed uncommitted piece"));
+        assertEquals(2, service.getPieceDirectory().size());
+        assertEquals("Header: AB", service.getText());
+        assertEquals(2, service.getPieceDirectory().get(1).getLength());
+
+        // Backspace 'AB' (position 8, length 2) - completely removes uncommitted piece!
+        EditDescription del3 = service.delete(8, 2);
+        assertTrue(del3.getDetails().contains("Backspace removed entire uncommitted piece"));
+        assertEquals(1, service.getPieceDirectory().size());
+        assertEquals("Header: ", service.getText());
+    }
+
+    @Test
+    @DisplayName("14. Point 3: Threshold-based Binary Search Tree transition (FLAT_LIST <= 64 -> BINARY_TREE > 64)")
+    void testThresholdBasedBinarySearchTreeTransition() {
+        service.initialize("Root document text for binary tree testing.");
+        assertEquals("FLAT_LIST", service.getDirectoryMode());
+        assertFalse(service.isTreeActive());
+        assertNull(service.getPieceTree());
+
+        // Generate more than 64 pieces by splitting at position 4 repeatedly with commit or middle inserts
+        // Middle insertion splits pieces without triggering typing merge
+        for (int i = 1; i <= 65; i++) {
+            service.insert(4, "[" + i + "]");
+        }
+
+        int pieceCount = service.getPieceDirectory().size();
+        assertTrue(pieceCount > PieceTableService.TREE_THRESHOLD,
+                "Piece count " + pieceCount + " must exceed threshold " + PieceTableService.TREE_THRESHOLD);
+
+        // Directory mode must now be BINARY_TREE
+        assertEquals("BINARY_TREE", service.getDirectoryMode());
+        assertTrue(service.isTreeActive());
+        assertNotNull(service.getPieceTree());
+        assertTrue(service.getPieceTree().getDepth() > 0);
+        assertEquals(service.getTotalLength(), service.getPieceTree().getTotalLength());
+
+        // Verify getSlice behaves accurately in BINARY_TREE mode
+        String fullText = service.getText();
+        String slice1 = service.getSlice(0, 20);
+        assertEquals(fullText.substring(0, 20), slice1);
+
+        String slice2 = service.getSlice(15, 30);
+        assertEquals(fullText.substring(15, 45), slice2);
+
+        // Verify seek and deletions in tree mode
+        int lenBeforeDel = service.getTotalLength();
+        service.delete(10, 5);
+        assertEquals(lenBeforeDel - 5, service.getTotalLength());
+        assertEquals(service.getText().length(), service.getTotalLength());
+
+        // Test undo restores tree state accurately
+        service.undo();
+        assertEquals(lenBeforeDel, service.getTotalLength());
+        assertEquals(fullText, service.getText());
+    }
 }

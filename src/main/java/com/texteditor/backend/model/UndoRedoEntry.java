@@ -24,8 +24,15 @@ public class UndoRedoEntry {
         this.operationType = operationType;
         this.position = position;
         this.length = length;
-        // Defensive copy of the piece descriptors
-        this.pieceDirectorySnapshot = new ArrayList<>(pieceDirectorySnapshot != null ? pieceDirectorySnapshot : List.of());
+        // Deep defensive copy of the piece descriptors
+        if (pieceDirectorySnapshot != null) {
+            this.pieceDirectorySnapshot = new ArrayList<>(pieceDirectorySnapshot.size());
+            for (Piece p : pieceDirectorySnapshot) {
+                this.pieceDirectorySnapshot.add(new Piece(p.getBuffer(), p.getStart(), p.getLength()));
+            }
+        } else {
+            this.pieceDirectorySnapshot = new ArrayList<>();
+        }
         this.description = description;
     }
 
@@ -42,7 +49,11 @@ public class UndoRedoEntry {
     }
 
     public List<Piece> pieceDirectorySnapshot() {
-        return new ArrayList<>(pieceDirectorySnapshot);
+        List<Piece> copy = new ArrayList<>(pieceDirectorySnapshot.size());
+        for (Piece p : pieceDirectorySnapshot) {
+            copy.add(new Piece(p.getBuffer(), p.getStart(), p.getLength()));
+        }
+        return copy;
     }
 
     public String description() {

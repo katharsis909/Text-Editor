@@ -3,6 +3,7 @@ package com.texteditor.backend.service;
 import com.texteditor.backend.model.BufferType;
 import com.texteditor.backend.model.EditDescription;
 import com.texteditor.backend.model.Piece;
+import com.texteditor.backend.model.PieceBinaryTree;
 import com.texteditor.backend.model.PieceDiffChunk;
 import com.texteditor.backend.model.UndoRedoEntry;
 import com.texteditor.backend.model.VersionSnapshot;
@@ -43,7 +44,35 @@ public class PieceTableService {
     // Active File Path for automatic saving on every edit
     private String activeFilePath = "data/users/megha/projects/main.txt";
 
+    // Point 3: Threshold for switching from ArrayList to Simple Binary Tree
+    public static final int TREE_THRESHOLD = 64;
+    private PieceBinaryTree pieceTree = new PieceBinaryTree();
+
+    // Point 4: Commit boundary marker. Pieces created before or at this addBuffer length
+    // are part of a committed version and must NEVER be mutated or defragmented.
+    private int lastCommittedAddBufferLength = 0;
+
     public PieceTableService() {}
+
+    public synchronized boolean isTreeActive() {
+        return pieceDirectory.size() > TREE_THRESHOLD;
+    }
+
+    public synchronized String getDirectoryMode() {
+        return isTreeActive() ? "BINARY_TREE" : "FLAT_LIST";
+    }
+
+    public synchronized PieceBinaryTree getPieceTree() {
+        return isTreeActive() ? pieceTree : null;
+    }
+
+    private void syncTreeIfActive() {
+        if (isTreeActive()) {
+            pieceTree.rebuild(pieceDirectory);
+        } else if (pieceTree.getRoot() != null) {
+            pieceTree.rebuild(java.util.Collections.emptyList());
+        }
+    }
 
     @jakarta.annotation.PostConstruct
     public void initDefaultDocument() {
@@ -98,10 +127,13 @@ public class PieceTableService {
         this.undoStack.clear();
         this.redoStack.clear();
         this.versionHistory = new ArrayList<>();
+        this.lastCommittedAddBufferLength = 0;
 
         if (this.originalBuffer.length() > 0) {
             this.pieceDirectory.add(new Piece(BufferType.ORIGINAL, 0, this.originalBuffer.length()));
         }
+
+        syncTreeIfActive();
 
         // Create initial Version 1 snapshot as CHECKPOINT
         this.versionHistory.add(new VersionSnapshot(
@@ -136,8 +168,12 @@ public class PieceTableService {
 
     /**
      * Get total document length by summing lengths of all pieces in directory.
+     * Uses PieceBinaryTree in O(1) if tree is active.
      */
     public synchronized int getTotalLength() {
+        if (isTreeActive() && pieceTree.getRoot() != null) {
+            return pieceTree.getTotalLength();
+        }
         int sum = 0;
         for (Piece p : pieceDirectory) {
             sum += p.getLength();
@@ -181,12 +217,23 @@ public class PieceTableService {
 
         int end = start + length;
         StringBuilder result = new StringBuilder(length);
-        int[] offsets = computeCumulativeOffsets();
-        int startPieceIdx = binarySearchPieceIndex(offsets, start);
+
+        int startPieceIdx;
+        int currentOffset;
+
+        if (isTreeActive() && pieceTree.getRoot() != null) {
+            PieceBinaryTree.SeekResult seek = pieceTree.findAtOffset(start);
+            startPieceIdx = seek.pieceIndex;
+            currentOffset = seek.globalPieceStart;
+        } else {
+            int[] offsets = computeCumulativeOffsets();
+            startPieceIdx = binarySearchPieceIndex(offsets, start);
+            currentOffset = offsets[startPieceIdx];
+        }
 
         for (int i = startPieceIdx; i < pieceDirectory.size(); i++) {
-            int pStart = offsets[i];
             Piece p = pieceDirectory.get(i);
+            int pStart = currentOffset;
             int pEnd = pStart + p.getLength();
 
             if (pEnd > start && pStart < end) {
@@ -199,6 +246,7 @@ public class PieceTableService {
             if (pStart >= end) {
                 break;
             }
+            currentOffset += p.getLength();
         }
         return result.toString();
     }
@@ -245,9 +293,65 @@ public class PieceTableService {
     }
 
     /**
-     * INSERTION: Keep adding pieces on additions.
-     * Appends text to Add Buffer and rewrites the piece directory to direct what part of that
-     * piece to read in what order.
+     * Finds the index of the piece whose end matches the given global position,
+     * or returns -1 if no piece boundary exists at position.
+     */
+    private int findPieceEndingAt(int position) {
+        if (position <= 0 || pieceDirectory.isEmpty()) return -1;
+        if (isTreeActive() && pieceTree.getRoot() != null) {
+            PieceBinaryTree.SeekResult seek = pieceTree.findAtOffset(position - 1);
+            if (seek != null && seek.globalPieceStart + seek.piece.getLength() == position) {
+                return seek.pieceIndex;
+            }
+            return -1;
+        } else {
+            int[] offsets = computeCumulativeOffsets();
+            int idx = binarySearchPieceIndex(offsets, position - 1);
+            if (idx >= 0 && idx < pieceDirectory.size()) {
+                if (offsets[idx] + pieceDirectory.get(idx).getLength() == position) {
+                    return idx;
+                }
+            }
+            return -1;
+        }
+    }
+
+    /**
+     * Defragments (coalesces) adjacent uncommitted pieces that point to contiguous buffer intervals.
+     * Strictly preserves commit boundaries: pieces created prior to the last commit are NEVER merged.
+     */
+    public synchronized int defragmentUncommittedPieces() {
+        if (pieceDirectory.size() < 2) return 0;
+        int mergedCount = 0;
+        int i = 0;
+        while (i < pieceDirectory.size() - 1) {
+            Piece p1 = pieceDirectory.get(i);
+            Piece p2 = pieceDirectory.get(i + 1);
+
+            // Both must be ADD buffer and contiguous in the addBuffer
+            if (p1.getBuffer() == BufferType.ADD && p2.getBuffer() == BufferType.ADD &&
+                    p1.getStart() + p1.getLength() == p2.getStart()) {
+                // Must be uncommitted (created after the latest commit)
+                boolean canMerge = (p1.getStart() >= lastCommittedAddBufferLength && p2.getStart() >= lastCommittedAddBufferLength);
+
+                if (canMerge) {
+                    p1.setLength(p1.getLength() + p2.getLength());
+                    pieceDirectory.remove(i + 1);
+                    mergedCount++;
+                    continue;
+                }
+            }
+            i++;
+        }
+        return mergedCount;
+    }
+
+    /**
+     * INSERTION:
+     * - Uses Typing Merge (Point 4) for continuous typing into uncommitted ADD pieces,
+     *   preventing piece fragmentation (0 new pieces created on contiguous typing).
+     * - Strictly prevents defragmenting or mutating committed version pieces.
+     * - Uses PieceBinaryTree (Point 3) for O(log P) positioning when exceeding threshold.
      */
     public synchronized EditDescription insert(int position, String text) {
         if (text == null || text.isEmpty()) {
@@ -261,50 +365,84 @@ public class PieceTableService {
         undoStack.push(new UndoRedoEntry("INSERT", position, text.length(), pieceDirectory, "Insert at " + position));
         redoStack.clear();
 
-        // 1. Append to Add Buffer (Append-Only)
-        int addStart = addBuffer.length();
-        addBuffer.append(text);
-        Piece newPiece = new Piece(BufferType.ADD, addStart, text.length());
-
         int piecesBefore = pieceDirectory.size();
-        String details;
+        String details = "";
 
-        if (pieceDirectory.isEmpty()) {
-            pieceDirectory.add(newPiece);
-            details = "Inserted as the only piece";
-        } else if (position == 0) {
-            pieceDirectory.add(0, newPiece);
-            details = "Prepended to start of piece directory";
-        } else if (position == totalLen) {
-            pieceDirectory.add(newPiece);
-            details = "Appended to end of piece directory";
-        } else {
-            // Middle addition: Use binary search to locate target piece to split
-            int[] offsets = computeCumulativeOffsets();
-            int targetIdx = binarySearchPieceIndex(offsets, position);
-            Piece targetPiece = pieceDirectory.get(targetIdx);
-            int pieceStartGlobal = offsets[targetIdx];
-            int offsetInPiece = position - pieceStartGlobal;
+        // --- POINT 4: TYPING MERGE ---
+        // Check if this insertion is a single keystroke (text.length() == 1) continuing consecutive typing
+        // at the end of an uncommitted ADD piece
+        boolean merged = false;
+        if (text.length() == 1) {
+            int endingPieceIdx = findPieceEndingAt(position);
+            if (endingPieceIdx >= 0) {
+                Piece candidate = pieceDirectory.get(endingPieceIdx);
+                if (candidate.getBuffer() == BufferType.ADD &&
+                        candidate.getStart() >= lastCommittedAddBufferLength &&
+                        candidate.getStart() + candidate.getLength() == addBuffer.length()) {
 
-            List<Piece> splitPieces = new ArrayList<>();
-            // Left portion
-            if (offsetInPiece > 0) {
-                splitPieces.add(new Piece(targetPiece.getBuffer(), targetPiece.getStart(), offsetInPiece));
+                    // Merge typing keystroke into candidate piece
+                    addBuffer.append(text);
+                    candidate.setLength(candidate.getLength() + text.length());
+                    merged = true;
+                    details = "Typing merge into uncommitted piece #" + endingPieceIdx + " (0 new pieces created)";
+                }
             }
-            // Newly added piece in middle
-            splitPieces.add(newPiece);
-            // Right portion
-            int remainingLen = targetPiece.getLength() - offsetInPiece;
-            if (remainingLen > 0) {
-                splitPieces.add(new Piece(targetPiece.getBuffer(), targetPiece.getStart() + offsetInPiece, remainingLen));
-            }
-
-            // Replace target piece with split subpieces
-            pieceDirectory.remove(targetIdx);
-            pieceDirectory.addAll(targetIdx, splitPieces);
-
-            details = "Split piece #" + targetIdx + " (" + targetPiece.getBuffer() + ") at offset " + offsetInPiece;
         }
+
+        if (!merged) {
+            // Standard piece insertion: append text to addBuffer and create new Piece
+            int addStart = addBuffer.length();
+            addBuffer.append(text);
+            Piece newPiece = new Piece(BufferType.ADD, addStart, text.length());
+
+            if (pieceDirectory.isEmpty()) {
+                pieceDirectory.add(newPiece);
+                details = "Inserted as the only piece";
+            } else if (position == 0) {
+                pieceDirectory.add(0, newPiece);
+                details = "Prepended to start of piece directory";
+            } else if (position == totalLen) {
+                pieceDirectory.add(newPiece);
+                details = "Appended to end of piece directory";
+            } else {
+                // Middle addition: locate target piece to split (O(log P) via tree if active)
+                int targetIdx;
+                int pieceStartGlobal;
+                if (isTreeActive() && pieceTree.getRoot() != null) {
+                    PieceBinaryTree.SeekResult seek = pieceTree.findAtOffset(position);
+                    targetIdx = seek.pieceIndex;
+                    pieceStartGlobal = seek.globalPieceStart;
+                } else {
+                    int[] offsets = computeCumulativeOffsets();
+                    targetIdx = binarySearchPieceIndex(offsets, position);
+                    pieceStartGlobal = offsets[targetIdx];
+                }
+
+                Piece targetPiece = pieceDirectory.get(targetIdx);
+                int offsetInPiece = position - pieceStartGlobal;
+
+                List<Piece> splitPieces = new ArrayList<>();
+                // Left portion
+                if (offsetInPiece > 0) {
+                    splitPieces.add(new Piece(targetPiece.getBuffer(), targetPiece.getStart(), offsetInPiece));
+                }
+                // Newly added piece in middle
+                splitPieces.add(newPiece);
+                // Right portion
+                int remainingLen = targetPiece.getLength() - offsetInPiece;
+                if (remainingLen > 0) {
+                    splitPieces.add(new Piece(targetPiece.getBuffer(), targetPiece.getStart() + offsetInPiece, remainingLen));
+                }
+
+                // Replace target piece with split subpieces
+                pieceDirectory.remove(targetIdx);
+                pieceDirectory.addAll(targetIdx, splitPieces);
+
+                details = "Split piece #" + targetIdx + " (" + targetPiece.getBuffer() + ") at offset " + offsetInPiece;
+            }
+        }
+
+        syncTreeIfActive();
 
         EditDescription desc = new EditDescription(
                 "INSERT",
@@ -314,7 +452,7 @@ public class PieceTableService {
                 "ADD",
                 piecesBefore,
                 pieceDirectory.size(),
-                details
+                details + " [" + getDirectoryMode() + "]"
         );
         history.add(desc);
         triggerAutoSave();
@@ -323,13 +461,9 @@ public class PieceTableService {
 
     /**
      * DELETION:
-     * - The deleted piece still remains in the piece buffer as it is (buffers are NEVER deleted or shrunk).
-     * - The piece directory gets rewritten directing what part of that piece to read in what order:
-     *     - deleting a part of piece
-     *     - deleting a complete piece
-     *     - deleting multiple pieces half half
-     * - Uses binary search to travel to the leftmost piece inside directory to delete.
-     * - All handled in a single unified code block.
+     * - Includes Backspace Trim on uncommitted ADD pieces (Point 4) to eliminate deletion fragmentation.
+     * - Strictly prevents mutating committed pieces.
+     * - General deletion rewrites piece directory with O(log P) seek when tree is active (Point 3).
      */
     public synchronized EditDescription delete(int position, int length) {
         int totalLen = getTotalLength();
@@ -348,54 +482,90 @@ public class PieceTableService {
         int delEnd = position + length;
         int piecesBefore = pieceDirectory.size();
 
-        // Binary search to find leftmost piece overlapping with delStart
         int[] offsets = computeCumulativeOffsets();
-        int leftPieceIdx = binarySearchPieceIndex(offsets, delStart);
+        int leftPieceIdx;
+        int rightPieceIdx;
 
-        // Binary search to find rightmost piece overlapping with delEnd - 1
-        int rightPieceIdx = binarySearchPieceIndex(offsets, delEnd - 1);
+        if (isTreeActive() && pieceTree.getRoot() != null) {
+            PieceBinaryTree.SeekResult leftSeek = pieceTree.findAtOffset(delStart);
+            PieceBinaryTree.SeekResult rightSeek = pieceTree.findAtOffset(delEnd - 1);
+            leftPieceIdx = leftSeek.pieceIndex;
+            rightPieceIdx = rightSeek.pieceIndex;
+        } else {
+            leftPieceIdx = binarySearchPieceIndex(offsets, delStart);
+            rightPieceIdx = binarySearchPieceIndex(offsets, delEnd - 1);
+        }
 
         // Collect deleted text preview before updating piece directory
         String fullText = getText();
         String deletedPreview = fullText.substring(delStart, delEnd);
+        String details;
 
-        // Single unified code block rewriting the piece directory
-        List<Piece> newDirectory = new ArrayList<>();
-
-        // 1. Retain all pieces strictly before the leftmost affected piece
-        for (int i = 0; i < leftPieceIdx; i++) {
-            newDirectory.add(pieceDirectory.get(i));
-        }
-
-        // 2. Handle affected pieces (leftmost through rightmost)
+        // --- POINT 4: BACKSPACE TRIM ON UNCOMMITTED ADD PIECE ---
         if (leftPieceIdx == rightPieceIdx) {
-            // Case A: Deletion falls entirely within a single piece (deleting part of a piece or the whole piece)
             Piece p = pieceDirectory.get(leftPieceIdx);
             int pStartGlobal = offsets[leftPieceIdx];
             int pEndGlobal = pStartGlobal + p.getLength();
 
-            // Left remainder before delStart
+            if (p.getBuffer() == BufferType.ADD &&
+                    p.getStart() >= lastCommittedAddBufferLength &&
+                    delEnd == pEndGlobal &&
+                    delStart >= pStartGlobal) {
+
+                if (delStart == pStartGlobal) {
+                    pieceDirectory.remove(leftPieceIdx);
+                    details = "Backspace removed entire uncommitted piece #" + leftPieceIdx;
+                } else {
+                    p.setLength(delStart - pStartGlobal);
+                    details = "Backspace trimmed uncommitted piece #" + leftPieceIdx + " by " + length + " chars";
+                }
+
+                syncTreeIfActive();
+
+                EditDescription desc = new EditDescription(
+                        "DELETE",
+                        position,
+                        length,
+                        getPreview(deletedPreview),
+                        "PIECE_DIRECTORY",
+                        piecesBefore,
+                        pieceDirectory.size(),
+                        details + " [" + getDirectoryMode() + "]"
+                );
+                history.add(desc);
+                triggerAutoSave();
+                return desc;
+            }
+        }
+
+        // General deletion rewriting piece directory
+        List<Piece> newDirectory = new ArrayList<>();
+
+        for (int i = 0; i < leftPieceIdx; i++) {
+            newDirectory.add(pieceDirectory.get(i));
+        }
+
+        if (leftPieceIdx == rightPieceIdx) {
+            Piece p = pieceDirectory.get(leftPieceIdx);
+            int pStartGlobal = offsets[leftPieceIdx];
+            int pEndGlobal = pStartGlobal + p.getLength();
+
             if (delStart > pStartGlobal) {
                 int keepLen = delStart - pStartGlobal;
                 newDirectory.add(new Piece(p.getBuffer(), p.getStart(), keepLen));
             }
-            // Right remainder after delEnd
             if (delEnd < pEndGlobal) {
                 int skipLen = delEnd - pStartGlobal;
                 int keepLen = pEndGlobal - delEnd;
                 newDirectory.add(new Piece(p.getBuffer(), p.getStart() + skipLen, keepLen));
             }
-            // If delStart <= pStartGlobal and delEnd >= pEndGlobal, the piece is completely dropped
         } else {
-            // Case B: Deletion spans across multiple pieces (deleting multiple pieces half-half or whole)
             Piece leftP = pieceDirectory.get(leftPieceIdx);
             int leftPStartGlobal = offsets[leftPieceIdx];
             if (delStart > leftPStartGlobal) {
                 int keepLen = delStart - leftPStartGlobal;
                 newDirectory.add(new Piece(leftP.getBuffer(), leftP.getStart(), keepLen));
             }
-
-            // All intermediate pieces (leftPieceIdx + 1 .. rightPieceIdx - 1) are completely omitted!
 
             Piece rightP = pieceDirectory.get(rightPieceIdx);
             int rightPStartGlobal = offsets[rightPieceIdx];
@@ -407,14 +577,15 @@ public class PieceTableService {
             }
         }
 
-        // 3. Retain all pieces strictly after the rightmost affected piece
         for (int i = rightPieceIdx + 1; i < pieceDirectory.size(); i++) {
             newDirectory.add(pieceDirectory.get(i));
         }
 
         this.pieceDirectory = newDirectory;
+        defragmentUncommittedPieces();
+        syncTreeIfActive();
 
-        String details = "Binary search located left piece #" + leftPieceIdx + " and right piece #" + rightPieceIdx +
+        details = "Binary search located left piece #" + leftPieceIdx + " and right piece #" + rightPieceIdx +
                 ". Rewrote piece directory (buffers untouched in RAM).";
 
         EditDescription desc = new EditDescription(
@@ -425,7 +596,7 @@ public class PieceTableService {
                 "PIECE_DIRECTORY",
                 piecesBefore,
                 pieceDirectory.size(),
-                details
+                details + " [" + getDirectoryMode() + "]"
         );
         history.add(desc);
         triggerAutoSave();
@@ -507,6 +678,7 @@ public class PieceTableService {
 
         // Restore previous piece directory snapshot
         this.pieceDirectory = entry.pieceDirectorySnapshot();
+        syncTreeIfActive();
 
         String details = "Reverted " + entry.operationType() + " at position " + entry.position() +
                 " (interval len " + entry.length() + "). Piece directory restored from undo stack.";
@@ -551,6 +723,7 @@ public class PieceTableService {
 
         // Restore target piece directory snapshot
         this.pieceDirectory = entry.pieceDirectorySnapshot();
+        syncTreeIfActive();
 
         String details = "Reapplied " + entry.operationType() + " at position " + entry.position() +
                 " (interval len " + entry.length() + "). Piece directory restored from redo stack.";
@@ -629,6 +802,9 @@ public class PieceTableService {
         // Compact older versions that fall outside the recent window (older than nextVersionId - 5).
         // 5-interval checkpoints (1, 5, 10, 15...) are permanent and NEVER compacted.
         compactOlderVersions();
+
+        // Mark all current addBuffer contents as committed (Point 4: strictly prevents defragmenting committed changes)
+        this.lastCommittedAddBufferLength = this.addBuffer.length();
 
         persistVersionsToDisk();
         return snapshot;
@@ -720,6 +896,9 @@ public class PieceTableService {
             this.addBuffer = new StringBuilder(resolveAddBufferForVersion(versionId));
             this.pieceDirectory = resolvePieceDirectoryForVersion(versionId);
         }
+
+        this.lastCommittedAddBufferLength = this.addBuffer.length();
+        syncTreeIfActive();
 
         history.add(new EditDescription(
                 "RESTORE_VERSION",
